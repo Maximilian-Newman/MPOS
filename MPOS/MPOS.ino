@@ -1,4 +1,4 @@
-String CURRENT_VERSION = "2.3 BETA";
+String CURRENT_VERSION = "2.4 BETA";
 
 
 // default settings
@@ -63,7 +63,7 @@ The following documentation is criminally out of date
 
       description: root file used by the system to store OS-used data
 
-      structure: depends on the file
+      structure: depends on the file, most of them are basically csv's
 
 
 
@@ -253,6 +253,10 @@ unsigned long SYS_RAMSampleTime = 0;
 unsigned long SYS_loadSampleTime = 0;
 unsigned long SYS_nextLoadSampleTime = 0;
 
+
+String CURRENT_APP = "";
+String CONTROLLING_APP = "SYS";
+
 void sample_RAM(){
   unsigned long testRAM = 8192 - freeMemory();
   testRAM *= 100;
@@ -286,7 +290,8 @@ void printFullMemory(){
   }
 }
 
-/*
+File* allFiles[5];
+bool allFilesUsedSpace[5] = {false, false, false, false, false};
 
 void addFileToList(File *fileptr){
   for (byte i=0; i<5; i++){
@@ -306,28 +311,54 @@ void removeFileFromList(File *fileptr){
   }
 }
 
-void closeAllFiles(){ // only use in memory-related emergencies
+void closeAllFiles(){
   for (byte i=0; i<5; i++){
     if (allFilesUsedSpace[i] == true){
       allFilesUsedSpace[i] = false;
-      (*allFiles[i]).close();
+      allFiles[i]->close();
     }
   }
   SD.end();
   SD.begin(53);
 }
-*/
 
-void closeFile(File *fileptr){
-  //removeFileFromList(fileptr);
-  (*fileptr).close();
+
+
+bool openFile(File &file, String path, uint8_t mode){
+  if (path.startsWith("/")) {path.remove(0, 1);}
+  if (path.startsWith("MPOS/")) {path.remove(0, 5);}
+
+  bool sysAccess = false;
+  if (path.startsWith("S/")) {
+    path.remove(0, 2);
+    sysAccess = true;
+  }
+  else if (path.startsWith("F/")) {path.remove(0, 2);}
+
+  String pathStart = "MPOS/";
+
+  if (sysAccess){
+    pathStart += "S/";
+  }
+  else{
+    pathStart += "F/";
+  }
+
+  file = SD.open(pathStart + path, mode); // don't replace with openFile()
+  if (file) {
+    addFileToList(&file);
+    return true;
+  }
+  return false;
+}
+
+void closeFile(File &file){
+  removeFileFromList(&file);
+  file.close();
 }
 
 
 
-
-String CURRENT_APP = "";
-String CONTROLLING_APP = "SYS";
 
 
 void large_instant_notice(String text) {
@@ -345,13 +376,14 @@ void large_instant_notice(String text) {
 
 void quit_all_apps(){
   if (CONTROLLING_APP == "SYS"){
-    if (File file = SD.open(String("/MPOS/S/") + "D/APPS.MRT", FILE_READ)){
-      //addFileToList(&file);
+    File file;
+    openFile(file, "S/D/APPS.MRT", FILE_READ);
+    if (file){
       while (file.available()){
         String appName = file.readStringUntil('\n');
         quit_app(&appName);
       }
-      closeFile(&file);
+      closeFile(file);
     }
   }
 }
@@ -368,6 +400,9 @@ void shut_down() {
     bluetooth_exit_AT();
     bluetooth_power_off();
 
+    closeAllFiles();
+
+    WatchDog::stop();
     digitalWrite(powerPin, LOW);
     while (true);
   }
@@ -385,10 +420,10 @@ void playTone(int freq, int duration) {
 void addSound(unsigned long Time, int freq, int duration) {
   Time += millis();
   SD.remove(String("/MPOS/S/") + "SOUNDT.MRT");
-  File soundLogR = SD.open(String("/MPOS/S/") + "SOUND.MRT", FILE_READ);
-  //addFileToList(&soundLogR);
-  File soundLogW = SD.open(String("/MPOS/S/") + "SOUNDT.MRT", FILE_WRITE);
-  //addFileToList(&soundLogW);
+  File soundLogR;
+  openFile(soundLogR, "S/SOUND.MRT", FILE_READ);
+  File soundLogW;
+  openFile(soundLogW, "S/SOUNDT.MRT", FILE_WRITE);
   bool entered = false;
 
   while (soundLogR.available()) {
@@ -417,21 +452,20 @@ void addSound(unsigned long Time, int freq, int duration) {
     soundLogW.print(",");
     soundLogW.print(duration + '\n');
   }
-  closeFile(&soundLogW);
-  closeFile(&soundLogR);
+  closeFile(soundLogW);
+  closeFile(soundLogR);
   SD.remove(String("/MPOS/S/") + "SOUND.MRT");
 
-  soundLogW = SD.open(String("/MPOS/S/") + "SOUND.MRT", FILE_WRITE);
-  //addFileToList(&soundLogW);
-  soundLogR = SD.open(String("/MPOS/S/") + "SOUNDT.MRT", FILE_READ);
-  //addFileToList(&soundLogR);
+  openFile(soundLogW, "S/SOUND.MRT", FILE_WRITE);
+  openFile(soundLogR, "S/SOUNDT.MRT", FILE_READ);
+
   while (soundLogR.available()) {
     String line = soundLogR.readStringUntil('\n');
     soundLogW.print(line + '\n');
   }
   sample_RAM();
-  closeFile(&soundLogW);
-  closeFile(&soundLogR);
+  closeFile(soundLogW);
+  closeFile(soundLogR);
   SD.remove(String("/MPOS/S/") + "SOUNDT.MRT");
 }
 
@@ -546,8 +580,8 @@ byte RFIDsize = 18;
 
 void RFIDCardDataToFile() {
   SD.remove(String("/MPOS/S/") + "RFID.MRT");
-  File cardData = SD.open(String("/MPOS/S/") + "RFID.MRT", FILE_WRITE);
-  //addFileToList(&cardData);
+  File cardData;
+  openFile(cardData, "S/RFID.MRT", FILE_WRITE);
 
   for (byte sectorNum = 1; sectorNum <= 16; sectorNum++) {
     RFIDauthenticate(sectorNum * 4 + 3);
@@ -558,7 +592,7 @@ void RFIDCardDataToFile() {
     }
   }
   sample_RAM();
-  closeFile(&cardData);
+  closeFile(cardData);
 }
 
 String RFIDreadBlock(byte blockAddr) {
@@ -579,7 +613,8 @@ String RFIDreadBlock(byte blockAddr) {
 
 
 bool RFIDwriteCardDataFromFile() {
-  File cardData = SD.open(String("/MPOS/S/") + "RFID.MRT", FILE_READ);
+  File cardData;
+  openFile(cardData, "S/RFID.MRT", FILE_READ);
   //addFileToList(&cardData);
   String failedSectors = "";
 
@@ -592,11 +627,11 @@ bool RFIDwriteCardDataFromFile() {
       if (sectorNum > 16) {
         addNotification("RFID Card Problems", "Failed to authenticate sectors:" + failedSectors);
         if (cardData.available()){
-          closeFile(&cardData);
+          closeFile(cardData);
           addNotification("RFID Write Incomplete", "Insufficient space on card");
           return false;
         }
-        closeFile(&cardData);
+        closeFile(cardData);
         return true;
       }
       delay(25);
@@ -618,7 +653,7 @@ bool RFIDwriteCardDataFromFile() {
       delay(25);
       success = RFIDwriteBlock(sectorNum * 4 + blockAddr, blockData);
       if (success == false) {
-        closeFile(&cardData);
+        closeFile(cardData);
         return false;
       }
     }
@@ -627,12 +662,12 @@ bool RFIDwriteCardDataFromFile() {
   if (failedSectors != "") {addNotification("RFID Card Problems", "Failed to authenticate sectors:" + failedSectors);}
 
   if (cardData.available()) {
-    closeFile(&cardData);
+    closeFile(cardData);
     addNotification("RFID Write Incomplete", "Insufficient space on card");
     return false;
   }
 
-  closeFile(&cardData);
+  closeFile(cardData);
   return true;
 }
 
@@ -670,54 +705,33 @@ bool RFIDauthenticate(byte trailerBlock) {
 
 const extern uint8_t SmallFont[];
 const extern uint8_t BigFont[];
-//const extern uint8_t SevenSegNumFont[];
 const extern uint8_t segment18_XXL[];
 const extern uint8_t Grotesk16x32[];
 const extern uint8_t Grotesk24x48[];
-//const extern uint8_t Grotesk32x64[];
-//const extern uint8_t GroteskBold16x32[];
-//const extern uint8_t GroteskBold24x48[];
-//const extern uint8_t GroteskBold32x64[];
 
 
 
 void setFont(String fontName) {
 
-  if (fontName == "small") {
+  if (fontName == "small" or fontName == "1") {
     screen.setFont(SmallFont);
   }
-  else if (fontName == "medium") {
+  else if (fontName == "medium" or fontName == "2") {
     screen.setFont(BigFont);
-    //font = {BigFont};
   }
-  /*else if (fontName == "SevenSegNumFont"){
-    screen.setFont(SevenSegNumFont);
-    }*/
-  else if (fontName == "giant") {
+  else if (fontName == "giant" or fontName == "3") {
     screen.setFont(segment18_XXL);
   }
-  else if (fontName == "large") {
+  else if (fontName == "large" or fontName == "4") {
     screen.setFont(Grotesk16x32);
   }
-  else if (fontName == "xlarge") {
+  else if (fontName == "xlarge" or fontName == "5") {
     screen.setFont(Grotesk24x48);
   }
-  /*else if (fontName == "Grotesk32x64"){
-    screen.setFont(Grotesk32x64);
-    }
-    else if (fontName == "GroteskBold16x32"){
-    screen.setFont(GroteskBold16x32);
-    }
-    else if (fontName == "GroteskBold24x48"){
-    screen.setFont(GroteskBold24x48);
-    }
-    else if (fontName == "GroteskBold32x64"){
-    screen.setFont(GroteskBold32x64);
-    }*/
 
   else {
     screen.setFont(SmallFont);// font not found
-    addNotification("FONT ERROR!", "The font '" + fontName + "' requested by the app '" + CONTROLLING_APP + "' couldn't be found.");
+    addNotification(F("FONT ERROR!"), "The font '" + fontName + "' requested by the app '" + CONTROLLING_APP + "' couldn't be found.");
   }
 }
 
@@ -847,7 +861,8 @@ float getInternalTemp() {
 }
 
 String getMonthStr() {
-  File monthNames = SD.open(String("/MPOS/S/") + "D/R/MONTHS.MRT", FILE_READ);
+  File monthNames;
+  openFile(monthNames, "S/D/R/MONTHS.MRT", FILE_READ);
   //addFileToList(&monthNames);
   byte mon = get_month() -1;
   for (byte i = 0; i < mon; i++){
@@ -855,7 +870,7 @@ String getMonthStr() {
   }
   String monName = monthNames.readStringUntil('\n');
   sample_RAM();
-  closeFile(&monthNames);
+  closeFile(monthNames);
   return monName;
 }
 
@@ -926,10 +941,10 @@ int encrypt1(int input) {
 
 bool removeFromFile(String path, String start, String end){
   SD.remove(String("/MPOS/S/") + "TEMP.MRT");
-  if (File file = SD.open(path, FILE_READ)){
-    //addFileToList(&file);
-    File tempFile = SD.open(String("/MPOS/S/") + "TEMP.MRT", FILE_WRITE);
-    //addFileToList(&tempFile);
+  File file;
+  if (openFile(file, path, FILE_READ)){
+    File tempFile;
+    openFile(tempFile, "S/TEMP.MRT", FILE_WRITE);
     
     String search1 = "";
     String search2 = "";
@@ -964,13 +979,11 @@ bool removeFromFile(String path, String start, String end){
       tempFile.print(search2);
     }
     
-    closeFile(&file);
-    closeFile(&tempFile);
+    closeFile(file);
+    closeFile(tempFile);
     SD.remove(path);
-    file = SD.open(path, FILE_WRITE);
-    //addFileToList(&file);
-    tempFile = SD.open(String("/MPOS/S/") + "TEMP.MRT", FILE_READ);
-    //addFileToList(&tempFile);
+    openFile(file, path, FILE_WRITE);
+    openFile(tempFile, "S/TEMP.MRT", FILE_READ);
     
     while (tempFile.available()){
       String section = "";
@@ -982,8 +995,8 @@ bool removeFromFile(String path, String start, String end){
       file.print(section);
     }
     sample_RAM();
-    closeFile(&file);
-    closeFile(&tempFile);
+    closeFile(file);
+    closeFile(tempFile);
 
     return true;
   }
@@ -1005,7 +1018,7 @@ void showMCI(String LABEL, String location, int startX, int startY, int scaleX, 
   File graphFile;
 
   if (LOG) {
-    graphFile = SD.open(String("/MPOS/S/") + "screen.mli", FILE_WRITE);
+    openFile(graphFile, "S/SCREEN.MLI", FILE_WRITE);
     //addFileToList(&graphFile);
     graphFile.seek(graphFile.size());
 
@@ -1020,13 +1033,12 @@ void showMCI(String LABEL, String location, int startX, int startY, int scaleX, 
     graphFile.print(",");
     graphFile.print(scaleY);
     graphFile.print(",\n");
-    closeFile(&graphFile);
+    closeFile(graphFile);
 
     delay(10);
   }
 
-  graphFile = SD.open(location, FILE_READ);
-  //addFileToList(&graphFile);
+  openFile(graphFile, location, FILE_READ);
   graphFile.seek(0);
   int imageWidth = graphFile.readStringUntil(',').toInt();
   int imageHeight = graphFile.readStringUntil(',').toInt();
@@ -1067,7 +1079,7 @@ void showMCI(String LABEL, String location, int startX, int startY, int scaleX, 
     currentWidth = 0;
   }
   sample_RAM();
-  closeFile(&graphFile);
+  closeFile(graphFile);
 }
 
 
@@ -1075,7 +1087,7 @@ void showBIM(String LABEL, String location, int startX, int startY, int scaleX, 
   File graphFile;
 
   if (LOG) {
-    graphFile = SD.open(String("/MPOS/S/") + "screen.mli", FILE_WRITE);
+    openFile(graphFile, "S/SCREEN.MLI", FILE_WRITE);
     //addFileToList(&graphFile);
     graphFile.seek(graphFile.size());
 
@@ -1102,14 +1114,13 @@ void showBIM(String LABEL, String location, int startX, int startY, int scaleX, 
     graphFile.print(",");
     graphFile.print(frontB);
     graphFile.print(",\n");
-    closeFile(&graphFile);
+    closeFile(graphFile);
 
     delay(10);
   }
 
 
-  graphFile = SD.open(location, FILE_READ);
-  //addFileToList(&graphFile);
+  openFile(graphFile, location, FILE_READ);
   graphFile.seek(0);
   int imageWidth = graphFile.readStringUntil(',').toInt();
   int imageHeight = graphFile.readStringUntil(',').toInt();
@@ -1138,7 +1149,7 @@ void showBIM(String LABEL, String location, int startX, int startY, int scaleX, 
     currentWidth = 0;
   }
   sample_RAM();
-  closeFile(&graphFile);
+  closeFile(graphFile);
 }
 
 
@@ -1259,10 +1270,10 @@ void setBackColor(byte r, byte g, byte b) {
 void dumpScreen() {
   Serial.print("\n\n");
   Serial.print(F("Start of screen.mli\n"));
-  File graphFile = SD.open(String("/MPOS/S/") + "screen.mli", FILE_READ);
-  //addFileToList(&graphFile);
+  File graphFile;
+  openFile(graphFile, "S/SCREEN.MLI", FILE_READ);
   Serial.print(graphFile.readString());
-  closeFile(&graphFile);
+  closeFile(graphFile);
   Serial.print(F("end of screen.mli\n"));
   Serial.print("\n\n");
 
@@ -1274,19 +1285,19 @@ void dumpScreen() {
 
 
 void addShape(String LABEL, String shape) {
-  File graphFile = SD.open(String("/MPOS/S/") + "screen.mli", FILE_WRITE);
-  //addFileToList(&graphFile);
+  File graphFile;
+  openFile(graphFile, "S/SCREEN.MLI", FILE_WRITE);
   graphFile.seek(graphFile.size());
 
   graphFile.print(CONTROLLING_APP + "_" + LABEL + ":" + shape + '\n');
-  closeFile(&graphFile);
+  closeFile(graphFile);
 
   delay(10);
 }
 
 void drawPixel(String LABEL, byte r, byte g, byte b, int x, int y) {
-  File graphFile = SD.open(String("/MPOS/S/") + "screen.mli", FILE_WRITE);
-  //addFileToList(&graphFile);
+  File graphFile;
+  openFile(graphFile, "S/SCREEN.MLI", FILE_WRITE);
   graphFile.seek(graphFile.size());
 
   graphFile.print(CONTROLLING_APP + "_" + LABEL + ":PIXEL,");
@@ -1301,7 +1312,7 @@ void drawPixel(String LABEL, byte r, byte g, byte b, int x, int y) {
   graphFile.print(",");
   graphFile.print(y);
   graphFile.print(",\n");
-  closeFile(&graphFile);
+  closeFile(graphFile);
   setColor(r, g, b);
   screen.drawPixel(x, y);
 
@@ -1309,8 +1320,8 @@ void drawPixel(String LABEL, byte r, byte g, byte b, int x, int y) {
 }
 
 void drawLine(String LABEL, byte r, byte g, byte b, int x1, int y1, int x2, int y2) {
-  File graphFile = SD.open(String("/MPOS/S/") + "screen.mli", FILE_WRITE);
-  //addFileToList(&graphFile);
+  File graphFile;
+  openFile(graphFile, "S/SCREEN.MLI", FILE_WRITE);
   graphFile.seek(graphFile.size());
 
   graphFile.print(CONTROLLING_APP + "_" + LABEL + ":LINE,");
@@ -1329,7 +1340,7 @@ void drawLine(String LABEL, byte r, byte g, byte b, int x1, int y1, int x2, int 
   graphFile.print(",");
   graphFile.print(y2);
   graphFile.print(",\n");
-  closeFile(&graphFile);
+  closeFile(graphFile);
   setColor(r, g, b);
   screen.drawLine(x1, y1, x2, y2);
 
@@ -1337,8 +1348,8 @@ void drawLine(String LABEL, byte r, byte g, byte b, int x1, int y1, int x2, int 
 }
 
 void drawRect(String LABEL, byte r, byte g, byte b, int x1, int y1, int x2, int y2) {
-  File graphFile = SD.open(String("/MPOS/S/") + "screen.mli", FILE_WRITE);
-  //addFileToList(&graphFile);
+  File graphFile;
+  openFile(graphFile, "S/SCREEN.MLI", FILE_WRITE);
   graphFile.seek(graphFile.size());
 
   graphFile.print(CONTROLLING_APP + "_" + LABEL + ":RECT,");
@@ -1357,7 +1368,7 @@ void drawRect(String LABEL, byte r, byte g, byte b, int x1, int y1, int x2, int 
   graphFile.print(",");
   graphFile.print(y2);
   graphFile.print(",\n");
-  closeFile(&graphFile);
+  closeFile(graphFile);
   setColor(r, g, b);
   screen.drawRect(x1, y1, x2, y2);
 
@@ -1365,8 +1376,8 @@ void drawRect(String LABEL, byte r, byte g, byte b, int x1, int y1, int x2, int 
 }
 
 void drawRoundRect(String LABEL, byte r, byte g, byte b, int x1, int y1, int x2, int y2) {
-  File graphFile = SD.open(String("/MPOS/S/") + "screen.mli", FILE_WRITE);
-  //addFileToList(&graphFile);
+  File graphFile;
+  openFile(graphFile, "S/SCREEN.MLI", FILE_WRITE);
   graphFile.seek(graphFile.size());
 
   graphFile.print(CONTROLLING_APP + "_" + LABEL + ":ROUNDRECT,");
@@ -1385,7 +1396,7 @@ void drawRoundRect(String LABEL, byte r, byte g, byte b, int x1, int y1, int x2,
   graphFile.print(",");
   graphFile.print(y2);
   graphFile.print(",\n");
-  closeFile(&graphFile);
+  closeFile(graphFile);
   setColor(r, g, b);
   screen.drawRoundRect(x1, y1, x2, y2);
 
@@ -1393,8 +1404,8 @@ void drawRoundRect(String LABEL, byte r, byte g, byte b, int x1, int y1, int x2,
 }
 
 void fillRect(String LABEL, byte r, byte g, byte b, int x1, int y1, int x2, int y2) {
-  File graphFile = SD.open(String("/MPOS/S/") + "screen.mli", FILE_WRITE);
-  //addFileToList(&graphFile);
+  File graphFile;
+  openFile(graphFile, "S/SCREEN.MLI", FILE_WRITE);
   graphFile.seek(graphFile.size());
 
   graphFile.print(CONTROLLING_APP + "_" + LABEL + ":FILLRECT,");
@@ -1413,7 +1424,7 @@ void fillRect(String LABEL, byte r, byte g, byte b, int x1, int y1, int x2, int 
   graphFile.print(",");
   graphFile.print(y2);
   graphFile.print(",\n");
-  closeFile(&graphFile);
+  closeFile(graphFile);
   setColor(r, g, b);
   screen.fillRect(x1, y1, x2, y2);
 
@@ -1421,8 +1432,8 @@ void fillRect(String LABEL, byte r, byte g, byte b, int x1, int y1, int x2, int 
 }
 
 void fillRoundRect(String LABEL, byte r, byte g, byte b, int x1, int y1, int x2, int y2) {
-  File graphFile = SD.open(String("/MPOS/S/") + "screen.mli", FILE_WRITE);
-  //addFileToList(&graphFile);
+  File graphFile;
+  openFile(graphFile, "S/SCREEN.MLI", FILE_WRITE);
   graphFile.seek(graphFile.size());
 
   graphFile.print(CONTROLLING_APP + "_" + LABEL + ":FILLROUNDRECT,");
@@ -1441,7 +1452,7 @@ void fillRoundRect(String LABEL, byte r, byte g, byte b, int x1, int y1, int x2,
   graphFile.print(",");
   graphFile.print(y2);
   graphFile.print(",\n");
-  closeFile(&graphFile);
+  closeFile(graphFile);
   setColor(r, g, b);
   screen.fillRoundRect(x1, y1, x2, y2);
 
@@ -1449,8 +1460,8 @@ void fillRoundRect(String LABEL, byte r, byte g, byte b, int x1, int y1, int x2,
 }
 
 void drawCircle(String LABEL, byte r, byte g, byte b, int x, int y, int radius) {
-  File graphFile = SD.open(String("/MPOS/S/") + "screen.mli", FILE_WRITE);
-  //addFileToList(&graphFile);
+  File graphFile;
+  openFile(graphFile, "S/SCREEN.MLI", FILE_WRITE);
   graphFile.seek(graphFile.size());
 
   graphFile.print(CONTROLLING_APP + "_" + LABEL + ":CIRCLE,");
@@ -1467,7 +1478,7 @@ void drawCircle(String LABEL, byte r, byte g, byte b, int x, int y, int radius) 
   graphFile.print(",");
   graphFile.print(radius);
   graphFile.print(",\n");
-  closeFile(&graphFile);
+  closeFile(graphFile);
   setColor(r, g, b);
   screen.drawCircle(x, y, radius);
 
@@ -1475,8 +1486,8 @@ void drawCircle(String LABEL, byte r, byte g, byte b, int x, int y, int radius) 
 }
 
 void fillCircle(String LABEL, byte r, byte g, byte b, int x, int y, int radius) {
-  File graphFile = SD.open(String("/MPOS/S/") + "screen.mli", FILE_WRITE);
-  //addFileToList(&graphFile);
+  File graphFile;
+  openFile(graphFile, "S/SCREEN.MLI", FILE_WRITE);
   graphFile.seek(graphFile.size());
 
   graphFile.print(CONTROLLING_APP + "_" + LABEL + ":FILLCIRCLE,");
@@ -1493,7 +1504,7 @@ void fillCircle(String LABEL, byte r, byte g, byte b, int x, int y, int radius) 
   graphFile.print(",");
   graphFile.print(radius);
   graphFile.print(",\n");
-  closeFile(&graphFile);
+  closeFile(graphFile);
   setColor(r, g, b);
   screen.fillCircle(x, y, radius);
 
@@ -1519,11 +1530,11 @@ void print(String LABEL, byte r, byte g, byte b, byte b_r, byte b_g, byte b_b, i
   shape += "," + fontName + "," + file_text + ",";
 
 
-  File graphFile = SD.open(String("/MPOS/S/") + "screen.mli", FILE_WRITE);
-  //addFileToList(&graphFile);
+  File graphFile;
+  openFile(graphFile, "S/SCREEN.MLI", FILE_WRITE);
   graphFile.seek(graphFile.size());
   graphFile.print(shape + '\n');
-  closeFile(&graphFile);
+  closeFile(graphFile);
 
   setColor(r, g, b);
   setBackColor(b_r, b_g, b_b);
@@ -1536,8 +1547,8 @@ void print(String LABEL, byte r, byte g, byte b, byte b_r, byte b_g, byte b_b, i
 void drawGraph(String label, int startX, int startY, unsigned int endX, unsigned int endY, int numPoints, int startRangeY, int endRangeY, String path){
   fillRoundRect(label, 255, 255, 255, startX, startY, endX, endY);
   drawRoundRect(label, 70, 70, 70, startX, startY, endX, endY);
-  if (File file = SD.open(path, FILE_READ)){
-    //addFileToList(&file);
+  File file;
+  if (openFile(file, path, FILE_READ)){
     int lastPoint = 0;
     int nextPoint = 0;
     unsigned int count = 0;
@@ -1558,7 +1569,7 @@ void drawGraph(String label, int startX, int startY, unsigned int endX, unsigned
       count += 1;
     }
 
-    closeFile(&file);
+    closeFile(file);
   }
   else{
     print(label, 0, 0, 0, 255, 255, 255, startX, startY, 0, "small", "no data");
@@ -1577,11 +1588,11 @@ void scr_removeApp(String app) {
 }
 
 void fileInsertStart(String path, String insert, unsigned int numLoops, byte linesPerLoop){
-  if (File file = SD.open(path, FILE_READ)){
-    //addFileToList(&file);
+  File file;
+  if (openFile(file, path, FILE_READ)){
     SD.remove(String("/MPOS/S/") + "TEMP.MRT");
-    File tempFile = SD.open(String("/MPOS/S/") + "TEMP.MRT", FILE_WRITE);
-    //addFileToList(&tempFile);
+    File tempFile;
+    openFile(tempFile, "S/TEMP.MRT", FILE_WRITE);
     for (byte i=0; i<numLoops; i++){
       String dataFragment = "";
       for (byte sample=0; sample<linesPerLoop; sample++){
@@ -1595,14 +1606,12 @@ void fileInsertStart(String path, String insert, unsigned int numLoops, byte lin
       }
     }
     sample_RAM();
-    closeFile(&file);
-    closeFile(&tempFile);
+    closeFile(file);
+    closeFile(tempFile);
   
     SD.remove(path);
-    tempFile = SD.open(String("/MPOS/S/") + "TEMP.MRT", FILE_READ);
-    //addFileToList(&tempFile);
-    file = SD.open(path, FILE_WRITE);
-    //addFileToList(&file);
+    openFile(tempFile, "S/TEMP.MRT", FILE_READ);
+    openFile(file, path, FILE_WRITE);
 
     file.print(insert);
     for (byte i=0; i<numLoops; i++){
@@ -1617,14 +1626,13 @@ void fileInsertStart(String path, String insert, unsigned int numLoops, byte lin
         file.print(dataFragment);
       }
     }
-    closeFile(&file);
-    closeFile(&tempFile);
+    closeFile(file);
+    closeFile(tempFile);
   }
   else{
-    file = SD.open(path, FILE_WRITE);
-    //addFileToList(&file);
+    openFile(file, path, FILE_WRITE);
     file.print(insert);
-    closeFile(&file);
+    closeFile(file);
   }
 }
 
@@ -1632,20 +1640,20 @@ void fileRemoveLineStartingWith(String path, String startToRemove) {
 
   SD.remove(String("/MPOS/S/") + "T_DEL.MRT");
 
-  File file = SD.open(path, FILE_READ);
+  File file;
+  openFile(file, path, FILE_READ);
   
   if (!file) {
-    closeFile(&file);
+    closeFile(file);
     return;
   }
   if (!file.available()) {
-    closeFile(&file);
+    closeFile(file);
     return;
   }
-  //addFileToList(&file);
 
-  File temporaryFile = SD.open(String("/MPOS/S/") + "T_DEL.MRT", FILE_WRITE);
-  //addFileToList(&temporaryFile);
+  File temporaryFile;
+  openFile(temporaryFile, "S/T_DEL.MRT", FILE_WRITE);
 
   while (file.available()) {
     String line = file.readStringUntil('\n');
@@ -1653,15 +1661,13 @@ void fileRemoveLineStartingWith(String path, String startToRemove) {
       temporaryFile.print(line + '\n');
     }
   }
-  closeFile(&file);
-  closeFile(&temporaryFile);
+  closeFile(file);
+  closeFile(temporaryFile);
 
   // copy new version from temporary file to permanent file
   SD.remove(path);
-  temporaryFile = SD.open(String("/MPOS/S/") + "T_DEL.MRT", FILE_READ);
-  //addFileToList(&temporaryFile);
-  file = SD.open(path, FILE_WRITE);
-  //addFileToList(&file);
+  openFile(temporaryFile, "S/T_DEL.MRT", FILE_READ);
+  openFile(file, path, FILE_WRITE);
 
   while (temporaryFile.available()) {
     String line = temporaryFile.readStringUntil('\n');
@@ -1669,17 +1675,17 @@ void fileRemoveLineStartingWith(String path, String startToRemove) {
     sample_RAM();
   }
 
-  closeFile(&file);
-  closeFile(&temporaryFile);
+  closeFile(file);
+  closeFile(temporaryFile);
   SD.remove(String("/MPOS/S/") + "T_DEL.MRT");
 }
 
 
 
 void showMLI(String LABEL, String path, int startX, int startY, int scaleX, int scaleY, bool record = true) {
+  File graphFile;
   if (record) {
-    File graphFile = SD.open(String("/MPOS/S/") + "screen.mli", FILE_WRITE);
-    //addFileToList(&graphFile);
+    openFile(graphFile, "S/SCREEN.MLI", FILE_WRITE);
     graphFile.seek(graphFile.size());
     graphFile.print(CONTROLLING_APP + "_" + LABEL + ":MLI,");
     graphFile.print(path);
@@ -1692,11 +1698,10 @@ void showMLI(String LABEL, String path, int startX, int startY, int scaleX, int 
     graphFile.print(",");
     graphFile.print(scaleY);
     graphFile.print(",\n");
-    closeFile(&graphFile);
+    closeFile(graphFile);
   }
 
-  File graphFile = SD.open(path, FILE_READ);
-  //addFileToList(&graphFile);
+  openFile(graphFile, path, FILE_READ);
 
   while (graphFile.available()) {
     graphFile.readStringUntil(':');
@@ -1874,7 +1879,12 @@ void refreshScreen(bool sysOnly = false) {
     displayKeyboardThisRefresh = false;
   }
 
-  File graphFile = SD.open(String("/MPOS/S/") + "screen.mli", FILE_READ);
+  String prevControl = CONTROLLING_APP;
+  CONTROLLING_APP = "SYS";
+  File graphFile;
+  openFile(graphFile, "S/SCREEN.MLI", FILE_READ);
+  CONTROLLING_APP = prevControl;
+
   //addFileToList(&graphFile);
   graphFile.seek(0);
 
@@ -2054,7 +2064,7 @@ void refreshScreen(bool sysOnly = false) {
     }
 
   }
-  closeFile(&graphFile);
+  closeFile(graphFile);
 }
 
 
@@ -2311,16 +2321,16 @@ unsigned long lastNotification = 0;
 
 
 
-bool addNotification(String title, String description) { // new SD notification system
+bool addNotification(String title, String description) {
   description.replace("\n", "");
-  File file = SD.open(String("/MPOS/S/") + "NOTIF.MRT", FILE_WRITE);
-  //addFileToList(&file);
+  File file;
+  openFile(file, "S/NOTIF.MRT", FILE_WRITE);
   file.print(title);
   file.print('\n');
   file.print(description);
   file.print('\n');
   sample_RAM();
-  closeFile(&file);
+  closeFile(file);
 }
 
 
@@ -2457,11 +2467,11 @@ bool keyboardSymbol = false;
 String keyboardUpcomingText = "";
 
 void show_keyboard() {
-  File layout = SD.open(String("/MPOS/S/") + "D/KEYBOARD.MRT", FILE_READ);
-  //addFileToList(&layout);
+  File layout;
+  openFile(layout, "S/D/KEYBOARD.MRT", FILE_READ);
   currentKeyboard = layout.readString();
   sample_RAM();
-  closeFile(&layout);
+  closeFile(layout);
   
   setColor(255, 255, 255); // black background if dark mode, else white background
   screen.fillRect(0, screen.getDisplayYSize() - 400, screen.getDisplayXSize(), screen.getDisplayYSize() - 1);
@@ -2541,7 +2551,8 @@ char keyboard_input() {
     if ( mfrc522.PICC_ReadCardSerial()) {
 
       RFIDCardDataToFile();
-      File cardFile = SD.open(String("/MPOS/S/") + "RFID.MRT", FILE_READ);
+      File cardFile;
+      openFile(cardFile, "S/RFID.MRT", FILE_READ);
       //addFileToList(&cardFile);
       
       String search1 = "";
@@ -2575,7 +2586,7 @@ char keyboard_input() {
       }
       sample_RAM();
       
-      closeFile(&cardFile);
+      closeFile(cardFile);
       mfrc522.PICC_HaltA();
       mfrc522.PCD_StopCrypto1();
     }
@@ -2776,12 +2787,12 @@ void showPassInputScreen() {
     }
   }
 
-  File file = SD.open(String("/MPOS/S/") + "D/password.mrt", FILE_READ);
-  //addFileToList(&file);
+  File file;
+  openFile(file, "S/D/PASSWORD.MRT", FILE_READ);
 
   truePass = file.readString();
   sample_RAM();
-  closeFile(&file);
+  closeFile(file);
 
   fillScr(0, 30, 60);
 
@@ -2867,10 +2878,10 @@ byte askForPass() {
 
 bool create_new_pass() {
   if (askForPass() != 0) {
-    File passFile = SD.open(String("/MPOS/S/") + "D/password.mrt", FILE_WRITE);
-    //addFileToList(&passFile);
+    File passFile;
+    openFile(passFile, "S/PASSWORD.MRT", FILE_WRITE);
     passFile.print(enteredPass);
-    closeFile(&passFile);
+    closeFile(passFile);
     return false; // process finished
   }
   else {
@@ -2945,7 +2956,7 @@ void deleteDirectory(String dirName) {
     dirName = dirName.substring(0, dirName.length()-1);
   }
   
-  File dir = SD.open(dirName);
+  File dir = SD.open(dirName); // openFile() doesn't support directories yet
   //addFileToList(&dir);
   while (true) {
     File entry =  dir.openNextFile();
@@ -2962,9 +2973,9 @@ void deleteDirectory(String dirName) {
     } else {
       SD.remove(entryName);
     }
-    closeFile(&entry);
+    closeFile(entry);
   }
-  closeFile(&dir);
+  closeFile(dir);
   SD.rmdir(dirName);
 }
 
@@ -3017,8 +3028,8 @@ unsigned long lastBackgroundTime = 0;
 
 
 void run_background(){
-  File file = SD.open(String("/MPOS/S/SETTINGS/") + "BACKGRD.MRT", FILE_READ);
-  //addFileToList(&file);
+  File file;
+  openFile(file, "S/SETTINGS/BACKGRD.MRT", FILE_READ);
 
   for (byte i=0; i<backgroundLoop and file.available();i++){
     file.readStringUntil('\n');
@@ -3029,7 +3040,7 @@ void run_background(){
     backgroundLoop = 0;
   }
   String appName = file.readStringUntil('\n');
-  closeFile(&file);
+  closeFile(file);
   String prev_control = CONTROLLING_APP;
   
   if (appName == "Notifications"){
@@ -3081,7 +3092,7 @@ void copy_stack_to_file(){
     Serial.println(String(*i));
     file.print("\n");
   }
-  closeFile(&file);
+  closeFile(file);
   stackFrameSaved = true;
   lastBackgroundTime = millis();
   WatchDog::start();
@@ -3096,7 +3107,7 @@ void recover_stack_from_file(){
     Serial.println(*i);
     i -= 1;
   }
-  closeFile(&file);
+  closeFile(file);
   lastBackgroundTime = millis();
   WatchDog::start();
 }
@@ -3322,8 +3333,8 @@ void HOMESCREEN_START() {
 
   fillScr(50, 50, 50);
 
-  File layout = SD.open(String("/MPOS/S/") + "D/HOME.MRT", FILE_READ);
-  //addFileToList(&layout);
+  File layout;
+  openFile(layout, "S/D/HOME.MRT", FILE_READ);
   unsigned int x = 50;
   unsigned int y = 100;
 
@@ -3348,7 +3359,7 @@ void HOMESCREEN_START() {
 
     x += 100;
   }
-  closeFile(&layout);
+  closeFile(layout);
 }
 
 void HOMESCREEN() {
@@ -3357,8 +3368,8 @@ void HOMESCREEN() {
     return;
   }
 
-  File layout = SD.open(String("/MPOS/S/") + "D/HOME.MRT", FILE_READ);
-  //addFileToList(&layout);
+  File layout;
+  openFile(layout, "S/D/HOME.MRT", FILE_READ);
   unsigned int x = 50;
   unsigned int y = 100;
 
@@ -3371,7 +3382,7 @@ void HOMESCREEN() {
     if (touchGetX() > x and touchGetY() > y and touchGetX() < x+60 and touchGetY() < y+60){
       String appName = layout.readStringUntil('\n');
       appName.toUpperCase();
-      closeFile(&layout);
+      closeFile(layout);
       set_app(appName);
       return;
     }
@@ -3381,7 +3392,7 @@ void HOMESCREEN() {
 
     x += 100;
   }
-  closeFile(&layout);
+  closeFile(layout);
 }
 
 
@@ -3463,7 +3474,8 @@ void SETTINGS_START() {
     print("", 0, 0, 0, 240, 240, 240, 20, 30, 0, "large", F("<- Settings - Bluetooth"));
     print("", 0, 0, 0, 240, 240, 240, 20, 90, 0, "medium", "Saved Devices:");
     unsigned int yPos = 130;
-    if (File file = SD.open(String("/MPOS/S/") + "BT/SAVE.MRT", FILE_READ)){
+    File file;
+    if (openFile(file, "S/BT/SAVE.MRT", FILE_READ)){
       //addFileToList(&file);
       while (file.available() and yPos < screen.getDisplayYSize()){
         drawLine("", 100, 100, 100, 0, yPos, screen.getDisplayXSize(), yPos);
@@ -3471,7 +3483,7 @@ void SETTINGS_START() {
         print("list", 0, 0, 0, 240, 240, 240, 20, yPos + 15, 0, "medium", file.readStringUntil('\n'));
         yPos += 50;
       }
-      closeFile(&file);
+      closeFile(file);
     }
     if (yPos == 130) {
       print("list", 0, 0, 0, 240, 240, 240, 20, yPos + 15, 0, "medium", F("You have no saved Bluetooth devices"));
@@ -3484,8 +3496,8 @@ void SETTINGS_START() {
     print("", 0, 0, 0, 240, 240, 240, 20, 30, 0, "large", F("<- Settings - Bluetooth"));
 
     bool searching = true;
-    if (File file = SD.open(String("/MPOS/S/") + "BT/SAVE.MRT", FILE_READ)){
-      //addFileToList(&file);
+    File file;
+    if (openFile(file, "S/BT/SAVE.MRT", FILE_READ)){
       while (file.available() and searching){
         String mac = file.readStringUntil('\t');
         String name = file.readStringUntil('\n');
@@ -3504,7 +3516,7 @@ void SETTINGS_START() {
           print("", 255, 255, 255, 0, 0, 255, screen.getDisplayXSize() / 2 + 70, screen.getDisplayYSize() - 160, 0, "medium", "Forget");
         }
       }
-      closeFile(&file);
+      closeFile(file);
     }
 
     if (searching){ // MAC not found in save file
@@ -3550,8 +3562,8 @@ void SETTINGS_START() {
 
   if (SETTINGS_page == "Quit") {
     print("Title", 0, 0, 0, 240, 240, 240, 20, 30, 0, "large", F("<- Settings - Quit Apps"));
-    if (File file = SD.open(String("/MPOS/S/") + "D/APPS.MRT", FILE_READ)){
-      //addFileToList(&file);
+    File file;
+    if (openFile(file, "S/D/APPS.MRT", FILE_READ)){
       int yPos = 100;
       while (file.available()){
         String appName = file.readStringUntil('\n');
@@ -3559,7 +3571,7 @@ void SETTINGS_START() {
         yPos += 50;
         drawLine("div", 100, 100, 100, 0, yPos, screen.getDisplayXSize(), yPos);
       }
-      closeFile(&file);
+      closeFile(file);
     }
     else{
       addNotification("Missing File", F("The root file '/MPOS/S/D/APPS.MRT' was not found."));
@@ -3574,14 +3586,14 @@ void SETTINGS_START() {
     print("", 0, 0, 0, 240, 240, 240, CENTER, 150, 0, "medium", F("you know what you are doing."));
 
     String backAllow = "";
-    if (File file = SD.open(String("/MPOS/S/SETTINGS/") + "BACKGRD.MRT", FILE_READ)){
-      //addFileToList(&file);
+    File file;
+    if (openFile(file, "S/SETTINGS/BACKGRD.MRT", FILE_READ)){
       backAllow = file.readString();
-      closeFile(&file);
+      closeFile(file);
     }
     else{
-      file = SD.open(String("/MPOS/S/SETTINGS/") + "BACKGRD.MRT", FILE_WRITE);
-      closeFile(&file);
+      openFile(file, "S/SETTINGS/BACKGRD.MRT", FILE_WRITE);
+      closeFile(file);
       addNotification("Missing File", F("The root file '/MPOS/S/SETTINGS/BACKGRD.MRT' was not found."));
     }
 
@@ -3596,8 +3608,7 @@ void SETTINGS_START() {
     drawLine("div", 100, 100, 100, 0, 180, screen.getDisplayXSize(), 180);
     //drawLine("div", 100, 100, 100, 0, 230, screen.getDisplayXSize(), 230);
     
-    if (File file = SD.open(String("/MPOS/S/") + "D/ABTASKS.MRT", FILE_READ)){
-      //addFileToList(&file);
+    if (openFile(file, "S/D/ABTASKS.MRT", FILE_READ)){
       int yPos = 180;
       while (file.available()){
         String appName = file.readStringUntil('\n');
@@ -3611,7 +3622,7 @@ void SETTINGS_START() {
         yPos += 50;
         drawLine("div", 100, 100, 100, 0, yPos, screen.getDisplayXSize(), yPos);
       }
-      closeFile(&file);
+      closeFile(file);
     }
     else{
       addNotification("Missing File", F("The root file '/MPOS/S/D/ABTASKS.MRT' was not found."));
@@ -3762,10 +3773,10 @@ void SETTINGS() {
       SETTINGS_START();
 
       SD.remove(String("MPOS/S/SETTINGS/") + "NAME.MRT");
-      File setFile = SD.open(String("MPOS/S/SETTINGS/") + "NAME.MRT", FILE_WRITE);
-      //addFileToList(&setFile);
+      File setFile;
+      openFile(setFile, "S/SETTINGS/NAME.MRT", FILE_WRITE);
       setFile.print(deviceName);
-      closeFile(&setFile);
+      closeFile(setFile);
     }
   }
 
@@ -3783,8 +3794,8 @@ void SETTINGS() {
 
       if (touchGetX() > screen.getDisplayXSize() - 75 and touchGetY() > 95 and touchGetX() < screen.getDisplayXSize() - 15 and touchGetY() < 125) { // bluetooth switch
         SD.remove(String("MPOS/S/SETTINGS/") + "BLUA.MRT");
-        File setFile = SD.open(String("MPOS/S/SETTINGS/") + "BLUA.MRT", FILE_WRITE);
-        //addFileToList(&setFile);
+        File setFile;
+        openFile(setFile, "S/SETTINGS/BLUA.MRT", FILE_WRITE);
         if (bluetoothActive == true) {
           setFile.print("N");
           bluetooth_power_off();
@@ -3795,7 +3806,7 @@ void SETTINGS() {
           bluetoothPowerOn();
           bluetoothActive = true;
         }
-        closeFile(&setFile);
+        closeFile(setFile);
         scr_removeLayer("bt-switch");
         on_off_input("bt-switch", screen.getDisplayXSize() - 70, 110, bluetoothActive);
       }
@@ -3838,8 +3849,8 @@ void SETTINGS() {
     int touchY = touchGetY();
     if (touch.dataAvailable() and touchY > 130){
       int yPos = 130;
-      if (File file = SD.open(String("/MPOS/S/") + "BT/SAVE.MRT", FILE_READ)){
-        //addFileToList(&file);
+      File file;
+      if (openFile(file, "S/BT/SAVE.MRT", FILE_READ)){
         while (file.available() and yPos < screen.getDisplayYSize()){
           SETTINGS_enteredMAC = file.readStringUntil('\t');
           file.readStringUntil('\n');
@@ -3852,7 +3863,7 @@ void SETTINGS() {
 
           yPos += 50;
         }
-        closeFile(&file);
+        closeFile(file);
       }
     }
   }
@@ -3885,19 +3896,20 @@ void SETTINGS() {
 
     if (SETTINGS_newBTFound) {
       SETTINGS_newBTFound = false;
-      if (File file = SD.open(String("/MPOS/S/") + "BT/NEARBY.MRT", FILE_READ)){
-        //addFileToList(&file);
+      File file;
+      if (openFile(file, "S/BT/NEARBY.MRT", FILE_READ)){
         String mac;
         while (file.available()) {mac = file.readStringUntil('\n'); }
         print("btdevice", 0, 0, 0, 240, 240, 240, 20, 180 + 40 * SETTINGS_listSize, 0, "medium", mac);
         drawLine("btdevice", 100, 100, 100, 0, 210 + 40 * SETTINGS_listSize, screen.getDisplayXSize(), 210 + 40 * SETTINGS_listSize);
         SETTINGS_listSize += 1;
-        closeFile(&file);
+        closeFile(file);
       }
     }
 
     if (touch.dataAvailable()){
 
+      File file;
       if (touchGetX() < 52 and touchGetY() < 60) { // press back button
         bluetooth_stop_scan();
         SETTINGS_page = "Network";
@@ -3923,8 +3935,7 @@ void SETTINGS() {
         print("", 0, 0, 0, 240, 240, 240, CENTER, 90, 0, "medium", F("Must be 12 HEX digits"));
       }
 
-      else if (File file = SD.open(String("/MPOS/S/") + "BT/NEARBY.MRT", FILE_READ)) {
-        //addFileToList(&file);
+      else if (openFile(file, "S/BT/NEARBY.MRT", FILE_READ)) {
         unsigned int yPos = 170;
         bool found = false;
         while (file.available() and !found) {
@@ -3932,12 +3943,11 @@ void SETTINGS() {
           if (touchGetY() > yPos and touchGetY() < yPos + 40) {
             bluetooth_stop_scan();
             found = true;
-            closeFile(&file);
+            closeFile(file);
             bluetooth_connect(mac);
 
             bool isSaved = false;
-            if (file = SD.open(String("/MPOS/S/") + "BT/SAVE.MRT", FILE_READ)) {
-              //addFileToList(&file);
+            if (openFile(file, "S/BT/SAVE.MRT", FILE_READ)) {
               while (file.available() and !isSaved) {
                 String savedMac = file.readStringUntil('\t');
                 if (savedMac == mac) {
@@ -3945,21 +3955,20 @@ void SETTINGS() {
                 }
                 file.readStringUntil('\n');
               }
-              closeFile(&file);
+              closeFile(file);
             }
 
             if (!isSaved) {
-              file = SD.open(String("/MPOS/S/") + "BT/SAVE.MRT", FILE_WRITE);
-              //addFileToList(&file);
+              openFile(file, "S/BT/SAVE.MRT", FILE_WRITE);
               file.print(mac + "\tNo Name\n");
-              closeFile(&file);
+              closeFile(file);
               bluetooth_transmit_packet("NAME\n");
             }
           }
 
           yPos += 40;
         }
-        closeFile(&file);
+        closeFile(file);
       }
     }
   }
@@ -3992,10 +4001,10 @@ void SETTINGS() {
       SETTINGS_page = "Bluetooth-Pair-Name";
       bluetooth_connect(SETTINGS_enteredMAC);
       bluetooth_transmit_packet("NAME\n");
-      File file = SD.open(String("/MPOS/S/") + "BT/SAVE.MRT", FILE_WRITE);
-      //addFileToList(&file);
+      File file;
+      openFile(file, "S/BT/SAVE.MRT", FILE_WRITE);
       file.print(SETTINGS_enteredMAC + "\tNo Name\n");
-      closeFile(&file);
+      closeFile(file);
       SETTINGS_page = "Network";
       scr_removeLayer("");
       SETTINGS_START();
@@ -4029,8 +4038,8 @@ void SETTINGS() {
 
       else if (touchGetY() > 475 and touchGetY() < 525 and touchGetX() > screen.getDisplayXSize()-75 and touchGetX() < screen.getDisplayXSize()-15){
         SD.remove(String("MPOS/S/SETTINGS/") + "TRACK.MRT");
-        File setFile = SD.open(String("MPOS/S/SETTINGS/") + "TRACK.MRT", FILE_WRITE);
-        //addFileToList(&setFile);
+        File setFile;
+        openFile(setFile, "S/SETTINGS/TRACK.MRT", FILE_WRITE);
         if (ramTracking){
           ramTracking = false;
           setFile.print('N');
@@ -4043,7 +4052,7 @@ void SETTINGS() {
           ramTracking = true;
           setFile.print('Y');
         }
-        closeFile(&setFile);
+        closeFile(setFile);
         scr_removeLayer("track-switch");
         on_off_input("track-switch", screen.getDisplayXSize() - 70, 500, ramTracking);
       }
@@ -4073,8 +4082,8 @@ void SETTINGS() {
 
     else if (touch.dataAvailable()){
       unsigned int touchPos = touchGetY();
-      if (File file = SD.open(String("/MPOS/S/") + "D/APPS.MRT", FILE_READ)){
-        //addFileToList(&file);
+      File file;
+      if (openFile(file, "S/D/APPS.MRT", FILE_READ)){
         int yPos = 100;
         while (file.available()){
           String appName = file.readStringUntil('\n');
@@ -4087,7 +4096,7 @@ void SETTINGS() {
           }
           yPos += 50;
         }
-        closeFile(&file);
+        closeFile(file);
       }
     }
   }
@@ -4102,10 +4111,10 @@ void SETTINGS() {
         SETTINGS_START();
       }
       else if (touchGetX() > screen.getDisplayXSize() - 75 ){
-        File file = SD.open(String("/MPOS/S/SETTINGS/") + "BACKGRD.MRT", FILE_READ);
-        //addFileToList(&file);
+        File file;
+        openFile(file, "S/SETTINGS/BACKGRD.MRT", FILE_READ);
         String backAllow = file.readString();
-        closeFile(&file);
+        closeFile(file);
 
         /*if (touchGetY() > 180 and touchGetY() < 230){
           scr_removeLayer("switch-SYS");
@@ -4118,8 +4127,7 @@ void SETTINGS() {
             on_off_input("switch-SYS", screen.getDisplayXSize() -70, 205, true);
           }
         }*/
-        if (file = SD.open(String("/MPOS/S/") + "D/ABTASKS.MRT", FILE_READ)){
-          //addFileToList(&file);
+        if (openFile(file, "S/D/ABTASKS.MRT", FILE_READ)){
           unsigned int yPos = 180;
           while (file.available()){
             String appName = file.readStringUntil('\n');
@@ -4137,13 +4145,12 @@ void SETTINGS() {
             }
             yPos += 50;
           }
-          closeFile(&file);
+          closeFile(file);
         }
         SD.remove(String("/MPOS/S/SETTINGS/") + "BACKGRD.MRT");
-        file = SD.open(String("/MPOS/S/SETTINGS/") + "BACKGRD.MRT", FILE_WRITE);
-        //addFileToList(&file);
+        openFile(file, "S/SETTINGS/BACKGRD.MRT", FILE_WRITE);
         file.print(backAllow);
-        closeFile(&file);
+        closeFile(file);
       }
     }
   }
@@ -4230,10 +4237,10 @@ void SETTINGS() {
       brightnessPercent = map(newBright, 20, screen.getDisplayXSize() - 20, 10, 100);
 
       SD.remove(String("MPOS/S/SETTINGS/") + "bright.mrt");
-      File setFile = SD.open(String("MPOS/S/SETTINGS/") + "bright.mrt", FILE_WRITE);
-      //addFileToList(&setFile);
+      File setFile;
+      openFile(setFile, "S/SETTINGS/BRIGHT.MRT", FILE_WRITE);
       setFile.print(brightnessPercent);
-      closeFile(&setFile);
+      closeFile(setFile);
 
       scr_removeLayer("brightness-scroll");
       fillRoundRect("brightness-scroll", 200, 200, 200, 20, 125, screen.getDisplayXSize() - 20, 135);
@@ -4249,8 +4256,8 @@ void SETTINGS() {
 
     if (touchGetX() > screen.getDisplayXSize() - 75 and touchGetY() > 170 and touchGetX() < screen.getDisplayXSize() - 15 and touchGetY() < 200) { // switch bluelight filter
       SD.remove(String("MPOS/S/SETTINGS/") + "blfilt.mrt");
-      File setFile = SD.open(String("MPOS/S/SETTINGS/") + "blfilt.mrt", FILE_WRITE);
-      //addFileToList(&setFile);
+      File setFile;
+      openFile(setFile, "S/SETTINGS/BLFILT.MRT", FILE_WRITE);
       if (blueFilter == true) {
         setFile.print("N");
         blueFilter = false;
@@ -4260,7 +4267,7 @@ void SETTINGS() {
         blueFilter = true;
       }
 
-      closeFile(&setFile);
+      closeFile(setFile);
 
       scr_removeLayer("bluelight-filter-switch");
       on_off_input("bluelight-filter-switch", screen.getDisplayXSize() - 70, 185, blueFilter);
@@ -4269,8 +4276,8 @@ void SETTINGS() {
 
     if (touchGetX() > screen.getDisplayXSize() - 75 and touchGetY() > 220 and touchGetX() < screen.getDisplayXSize() - 15 and touchGetY() < 250) { // switch color invert
       SD.remove(String("MPOS/S/SETTINGS/") + "colinvrt.mrt");
-      File setFile = SD.open(String("MPOS/S/SETTINGS/") + "colinvrt.mrt", FILE_WRITE);
-      //addFileToList(&setFile);
+      File setFile;
+      openFile(setFile, "S/SETTINGS/COLINVRT.MRT", FILE_WRITE);
       if (invertColor == true) {
         setFile.print("N");
         invertColor = false;
@@ -4280,7 +4287,7 @@ void SETTINGS() {
         invertColor = true;
       }
 
-      closeFile(&setFile);
+      closeFile(setFile);
 
       scr_removeLayer("invert-color-switch");
       on_off_input("invert-color-switch", screen.getDisplayXSize() - 70, 235, invertColor);
@@ -4289,8 +4296,8 @@ void SETTINGS() {
 
     if (touchGetX() > screen.getDisplayXSize() - 75 and touchGetY() > 270 and touchGetX() < screen.getDisplayXSize() - 15 and touchGetY() < 300) { // switch dark mode
       SD.remove(String("MPOS/S/SETTINGS/") + "DARK.MRT");
-      File setFile = SD.open(String("MPOS/S/SETTINGS/") + "DARK.MRT", FILE_WRITE);
-      //addFileToList(&setFile);
+      File setFile;
+      openFile(setFile, "S/SETTINGS/DARK.MRT", FILE_WRITE);
       if (darkMode == true) {
         setFile.print("N");
         darkMode = false;
@@ -4300,7 +4307,7 @@ void SETTINGS() {
         darkMode = true;
       }
 
-      closeFile(&setFile);
+      closeFile(setFile);
 
       scr_removeLayer("dark-mode-switch");
       on_off_input("dark-mode-switch", screen.getDisplayXSize() - 70, 285, darkMode);
@@ -4321,8 +4328,8 @@ void SETTINGS() {
 
     if (touchGetX() > screen.getDisplayXSize() - 75 and touchGetY() > 95 and touchGetX() < screen.getDisplayXSize() - 15 and touchGetY() < 125) { // mute switch
       SD.remove(String("MPOS/S/SETTINGS/") + "sound.mrt");
-      File setFile = SD.open(String("MPOS/S/SETTINGS/") + "sound.mrt", FILE_WRITE);
-      //addFileToList(&setFile);
+      File setFile;
+      openFile(setFile, "S/SETTINGS/SOUND.MRT", FILE_WRITE);
       if (volume == true) {
         setFile.print("N");
         volume = false;
@@ -4331,7 +4338,7 @@ void SETTINGS() {
         setFile.print("Y");
         volume = true;
       }
-      closeFile(&setFile);
+      closeFile(setFile);
       scr_removeLayer("mute-switch");
       on_off_input("mute-switch", screen.getDisplayXSize() - 70, 110, !volume);
 
@@ -4381,7 +4388,7 @@ void FILES_START() {
   clearString(FILES_selected);
   FILES_lastYPos = 0;
 
-  File dir = SD.open(FILES_ROOT + appPathArg, FILE_READ);
+  File dir = SD.open(FILES_ROOT + appPathArg, FILE_READ); // openFile() doesn't support directories yet
   //addFileToList(&dir);
 
   print("head", 0, 0, 0, 255, 255, 255, CENTER, 20, 0, "large", "Files");
@@ -4430,11 +4437,11 @@ void FILES_START() {
         print("fileName", 0, 0, 0, 255, 255, 255, RIGHT, yPos, 0, "medium", String(fSize) + " bytes");
       }
     }
-    closeFile(&entry);
+    closeFile(entry);
   }
   
 
-  closeFile(&dir);
+  closeFile(dir);
 }
 
 
@@ -4582,7 +4589,7 @@ void FILES() {
   
   unsigned int yPos = 130;
   
-  File dir = SD.open(FILES_ROOT + appPathArg, FILE_READ);
+  File dir = SD.open(FILES_ROOT + appPathArg, FILE_READ); // openFile() doesn't support directories yet
   //addFileToList(&dir);
   
   while (true) { // loop for each file
@@ -4636,9 +4643,9 @@ void FILES() {
         print("selected", 255, 255, 255, 20, 30, 255, 30, screen.getDisplayYSize() - 35, 0, "medium", "Open File");
       }
     }
-    closeFile(&entry);
+    closeFile(entry);
   }
-  closeFile(&dir);
+  closeFile(dir);
 }
 
 void FILES_QUIT(){
@@ -4733,7 +4740,7 @@ void TEXT_START(){
       File tempFile = SD.open(tFileName, FILE_WRITE);
       //addFileToList(&tempFile);
       tempFile.print(buf);
-      closeFile(&tempFile);
+      closeFile(tempFile);
       tfilenum += 1;
     }
 
@@ -4743,7 +4750,7 @@ void TEXT_START(){
     //  TEXT_fileContent += char(file.read());
     //}
 
-    closeFile(&file);
+    closeFile(file);
     TEXT_blockNumber = 0;
     TEXT_loadBlock();*/
 
@@ -4775,8 +4782,9 @@ void TEXT(){
         hide_keyboard();
         appPathArg += TEXT_newName + ".TXT";
     
-        File file = SD.open(appPathArg, FILE_WRITE);
-        closeFile(&file);
+        File file;
+        openFile(file, appPathArg, FILE_WRITE);
+        closeFile(file);
   
         scr_removeLayer("");
         TEXT_START();
@@ -5042,19 +5050,21 @@ unsigned int TEXT_saveBlock(){ // returns size of first file buffer size (out of
     return TEXT_fileContent.length() / 2; // crude approx. but if no edits were made, user probably doesn't care about cursor moving when scrolling
   }
 
-  String fileName1 = String("/MPOS/S/") + "TEXT/" + String(TEXT_blockNumber) + ".txt";
-  String fileName2 = String("/MPOS/S/") + "TEXT/" + String(TEXT_blockNumber + 1) + ".txt";
+  String fileName1 = "S/TEXT/" + String(TEXT_blockNumber) + ".txt";
+  String fileName2 = "S/TEXT/" + String(TEXT_blockNumber + 1) + ".txt";
 
   SD.remove(fileName1);
 
   if (TEXT_fileContent.length() < TEXT_BLOCK_SIZE){
-    File file = SD.open(fileName1, FILE_WRITE);
+    File file;
+    openFile(file, fileName1, FILE_WRITE);
     file.print(TEXT_fileContent);
-    closeFile(&file);
+    closeFile(file);
     
     if (SD.exists(fileName2)){
       SD.remove(fileName2);
-      SD.open(fileName2, FILE_WRITE).close();
+      openFile(file, fileName2, FILE_WRITE);
+      file.close();
     }
 
     TEXT_editSinceLastSaved = false;
@@ -5065,17 +5075,18 @@ unsigned int TEXT_saveBlock(){ // returns size of first file buffer size (out of
     SD.remove(fileName2);
 
     unsigned int splitIndex = TEXT_fileContent.length() / 2;
-    File file = SD.open(fileName1, FILE_WRITE);
+    File file;
+    openFile(file, fileName1, FILE_WRITE);
     for (unsigned int i=0; i<splitIndex; i++){
       file.write(TEXT_fileContent[i]);
     }
-    closeFile(&file);
+    closeFile(file);
 
-    file = SD.open(fileName2, FILE_WRITE);
+    openFile(file, fileName2, FILE_WRITE);
     for (unsigned int i=splitIndex; i<TEXT_fileContent.length(); i++){
       file.write(TEXT_fileContent[i]);
     }
-    closeFile(&file);
+    closeFile(file);
     TEXT_editSinceLastSaved = false;
     return splitIndex;
   }
@@ -5087,25 +5098,27 @@ void TEXT_saveFullFile(){
   TEXT_saveBlock();
   SD.remove(TEXT_filePath);
 
-  File file = SD.open(TEXT_filePath, FILE_WRITE);
+  File file;
+  openFile(file, TEXT_filePath, FILE_WRITE);
   unsigned int i = 0;
   String buf = "";
   buf.reserve(TEXT_BLOCK_SIZE + 1);
-  while (File tempFile = SD.open(String("/MPOS/S/") + "TEXT/" + String(i) + ".txt", FILE_READ)){
+  File tempFile;
+  while (openFile(tempFile, "S/TEXT/" + String(i) + ".txt", FILE_READ)){
     buf = tempFile.readString();
-    closeFile(&tempFile);
+    closeFile(tempFile);
     file.print(buf);
     i += 1;
   }
-  closeFile(&file);
+  closeFile(file);
   TEXT_editSinceLastFullSave = false;
 }
 
 
 void TEXT_loadFullFile(){
   TEXT_clearCache();
-  File file = SD.open(TEXT_filePath, FILE_READ);
-  //addFileToList(&file);
+  File file;
+  openFile(file, TEXT_filePath, FILE_READ);
 
   unsigned int tfilenum = 0;
 
@@ -5121,14 +5134,14 @@ void TEXT_loadFullFile(){
       }
     }
 
-    File tempFile = SD.open(tFileName, FILE_WRITE);
-    //addFileToList(&tempFile);
+    File tempFile;
+    openFile(tempFile, tFileName, FILE_WRITE);
     tempFile.print(buf);
-    closeFile(&tempFile);
+    closeFile(tempFile);
     tfilenum += 1;
   }
 
-  closeFile(&file);
+  closeFile(file);
   TEXT_loadBlock();
 }
 
@@ -5144,9 +5157,10 @@ void TEXT_loadBlock(){ // load text from 2 cached sections into TEXT_fileContent
   }
 
   for (byte i=0; i<2; i++){
-    if (File file = SD.open(String("/MPOS/S/") + "TEXT/" + String(TEXT_blockNumber + i) + ".txt", FILE_READ)){
+    File file;
+    if (openFile(file, "S/TEXT/" + String(TEXT_blockNumber + i) + ".txt", FILE_READ)){
       TEXT_fileContent += file.readString();
-      closeFile(&file);
+      closeFile(file);
     }
   }
 }
@@ -5320,8 +5334,8 @@ void RFID(){
           screen.print("Reading...", CENTER, 610);
           
           RFIDCardDataToFile();
-          File cardFile = SD.open(String("/MPOS/S/") + "RFID.MRT", FILE_READ);
-          //addFileToList(&cardFile);
+          File cardFile;
+          openFile(cardFile, "S/RFID.MRT", FILE_READ);
           File file;
 
           byte fileNum = 0;
@@ -5350,8 +5364,7 @@ void RFID(){
                 fName.remove(0, 1);
               }
               SD.remove(RFID_path + fName);
-              if (file = SD.open(RFID_path + fName, FILE_WRITE)){
-                //addFileToList(&file);
+              if (openFile(file, RFID_path + fName, FILE_WRITE)){
                 copying = true;
                 search.remove(0, search.indexOf("<end fileName " + String(fileNum) + "><content: ") + 26);
                 if (fileNum >= 10){
@@ -5367,7 +5380,7 @@ void RFID(){
             
             if ( (search1+search2).indexOf("<endContent " + String(fileNum) + ">>") >= 0){
               file.print((search1+search2).substring(0, (search1+search2).indexOf("<endContent " + String(fileNum) + ">>")));
-              closeFile(&file);
+              closeFile(file);
               copying = false;
               fileNum += 1;
             }
@@ -5379,9 +5392,9 @@ void RFID(){
           
 
           if (file){
-            closeFile(&file);
+            closeFile(file);
           }
-          closeFile(&cardFile);
+          closeFile(cardFile);
           mfrc522.PICC_HaltA();
           mfrc522.PCD_StopCrypto1();
           
@@ -5397,8 +5410,8 @@ void RFID(){
     else if (RFID_mode == "upload"){
       if (mfrc522.PICC_IsNewCardPresent()) {
         if ( mfrc522.PICC_ReadCardSerial()) {
-          if (File file = SD.open(RFID_path, FILE_READ)){
-            //addFileToList(&file);
+          File file;
+          if (openFile(file, RFID_path, FILE_READ)){
             setColor(10, 255, 20);
             screen.fillRoundRect(40, 590, screen.getDisplayXSize()-40, 645);
             setColor(0, 0, 0);
@@ -5408,8 +5421,8 @@ void RFID(){
             screen.print("Writing...", CENTER, 610);
             
             RFIDCardDataToFile();
-            File cardFile = SD.open(String("/MPOS/S/") + "RFID.MRT", FILE_READ);
-            //addFileToList(&cardFile);
+            File cardFile;
+            openFile(cardFile, "S/RFID.MRT", FILE_READ);
             
             byte fileNum = 0;
 
@@ -5428,10 +5441,9 @@ void RFID(){
               }
             }
 
-            closeFile(&cardFile);
+            closeFile(cardFile);
 
-            cardFile = SD.open(String("/MPOS/S/") + "RFID.MRT", FILE_WRITE);
-            //addFileToList(&cardFile);
+            openFile(cardFile, "S/RFID.MRT", FILE_WRITE);
             
             cardFile.print("<file ");
             cardFile.print(fileNum);
@@ -5452,11 +5464,11 @@ void RFID(){
               cardFile.print(section);
             }
             
-            closeFile(&file);
+            closeFile(file);
             cardFile.print("<endContent ");
             cardFile.print(fileNum);
             cardFile.print(">>");
-            closeFile(&cardFile);
+            closeFile(cardFile);
             
             if (RFIDwriteCardDataFromFile()){
               setColor(10, 255, 20);
@@ -5505,12 +5517,11 @@ void RFID(){
           
           RFIDCardDataToFile();
           removeFromFile(String("/MPOS/S/") + "RFID.MRT", "<keyMacro:", "keyMacro>");
-          File cardFile = SD.open(String("/MPOS/S/") + "RFID.MRT", FILE_WRITE);
-          //addFileToList(&cardFile);
+          File cardFile;
+          openFile(cardFile, "S/RFID.MRT", FILE_WRITE);
           
-          
-          if (File file = SD.open(RFID_path, FILE_READ)){
-            //addFileToList(&file);
+          File file;
+          if (openFile(file, RFID_path, FILE_READ)){
             cardFile.print("<keyMacro:");
             
             while (file.available()){
@@ -5522,8 +5533,8 @@ void RFID(){
             }
             
             cardFile.print("keyMacro>");
-            closeFile(&file);
-            closeFile(&cardFile);
+            closeFile(file);
+            closeFile(cardFile);
             
             if (RFIDwriteCardDataFromFile()){
               setColor(10, 255, 20);
@@ -5553,7 +5564,7 @@ void RFID(){
             mfrc522.PCD_StopCrypto1();
           }
           else{
-            closeFile(&cardFile);
+            closeFile(cardFile);
           }
         }
       }
@@ -5571,9 +5582,9 @@ void RFID(){
           screen.print("Writing...", CENTER, 610);
           
           SD.remove(String("/MPOS/S/") + "RFID.MRT"); // create blank file
-          File cardFile = SD.open(String("/MPOS/S/") + "RFID.MRT", FILE_WRITE);
-          //addFileToList(&cardFile);
-          closeFile(&cardFile);
+          File cardFile;
+          openFile(cardFile, "S/RFID.MRT", FILE_WRITE);
+          closeFile(cardFile);
           
           if (RFIDwriteCardDataFromFile()){
             setColor(10, 255, 20);
@@ -5630,8 +5641,8 @@ void RFID_QUIT(){
 
 void BACKGROUND_NOTIFS(){
   
-  File notifFile = SD.open(String("/MPOS/S/") + "NOTIF.MRT", FILE_READ);
-  //addFileToList(&notifFile);
+  File notifFile;
+  openFile(notifFile, "S/NOTIF.MRT", FILE_READ);
   if (notifFile.available()) {
     String notifTitle = notifFile.readStringUntil('\n');
     String notifDescription = notifFile.readStringUntil('\n');
@@ -5640,31 +5651,29 @@ void BACKGROUND_NOTIFS(){
 
       // remove displayed notification from file
       SD.remove(String("/MPOS/S/") + "NOTIFT.MRT");
-      File tempFile = SD.open(String("/MPOS/S/") + "NOTIFT.MRT", FILE_WRITE);
-      //addFileToList(&tempFile);
+      File tempFile;
+      openFile(tempFile, "S/NOTIFT.MRT", FILE_WRITE);
       while (notifFile.available()) {
         String line = notifFile.readStringUntil('\n');
         tempFile.print(line);
         tempFile.print('\n');
       }
-      closeFile(&notifFile);
-      closeFile(&tempFile);
+      closeFile(notifFile);
+      closeFile(tempFile);
       SD.remove(String("/MPOS/S/") + "NOTIF.MRT");
 
-      tempFile = SD.open(String("/MPOS/S/") + "NOTIFT.MRT", FILE_READ);
-      //addFileToList(&tempFile);
-      notifFile = SD.open(String("/MPOS/S/") + "NOTIF.MRT", FILE_WRITE);
-      //addFileToList(&notifFile);
+      openFile(tempFile, "S/NOTIFT.MRT", FILE_READ);
+      openFile(notifFile, "S/NOTIF.MRT", FILE_WRITE);
 
       while (tempFile.available()) {
         String line = tempFile.readStringUntil('\n');
         notifFile.print(line);
         notifFile.print('\n');
       }
-      closeFile(&tempFile);
+      closeFile(tempFile);
     }
   }
-  closeFile(&notifFile);
+  closeFile(notifFile);
 
 
   
@@ -5723,8 +5732,8 @@ void BACKGROUND_RAM_MONITOR(){
 void process_sound(){ // needs to run much more frequently than normal background task scheduling allows
   if (volume){
   
-    File soundLogR = SD.open(String("/MPOS/S/") + "SOUND.MRT", FILE_READ);
-    //addFileToList(&soundLogR);
+    File soundLogR;
+    openFile(soundLogR, "S/SOUND.MRT", FILE_READ);
 
     if (soundLogR.available()) {
       unsigned long soundTime = soundLogR.readStringUntil(',').toInt();
@@ -5734,32 +5743,31 @@ void process_sound(){ // needs to run much more frequently than normal backgroun
         playTone(freq, duration);
 
         SD.remove(String("/MPOS/S/") + "SOUNDT.MRT");
-        File soundLogW = SD.open(String("/MPOS/S/") + "SOUNDT.MRT", FILE_WRITE);
-        //addFileToList(&soundLogW);
+        File soundLogW;
+        openFile(soundLogW, "S/SOUNDT.MRT", FILE_WRITE);
         while (soundLogR.available()) {
           String line = soundLogR.readStringUntil('\n');
           soundLogW.print(line + '\n');
         }
 
-        closeFile(&soundLogR);
-        closeFile(&soundLogW);
+        closeFile(soundLogR);
+        closeFile(soundLogW);
         SD.remove(String("/MPOS/S/") + "SOUND.MRT");
 
-        soundLogW = SD.open(String("/MPOS/S/") + "SOUND.MRT", FILE_WRITE);
-        //addFileToList(&soundLogW);
-        soundLogR = SD.open(String("/MPOS/S/") + "SOUNDT.MRT", FILE_READ);
-        //addFileToList(&soundLogR);
+        openFile(soundLogW, "S/SOUND.MRT", FILE_WRITE);
+        openFile(soundLogR, "S/SOUNDT.MRT", FILE_READ);
+
         while (soundLogR.available()) {
           String line = soundLogR.readStringUntil('\n');
           soundLogW.print(line + '\n');
         }
 
-        closeFile(&soundLogR);
-        closeFile(&soundLogW);
+        closeFile(soundLogR);
+        closeFile(soundLogW);
         SD.remove(String("/MPOS/S/") + "SOUNDT.MRT");
       }
     }
-    closeFile(&soundLogR);
+    closeFile(soundLogR);
   }
 }
 
@@ -5827,26 +5835,23 @@ void setup() {
 
 
   File setFile;
-  if (setFile = SD.open(String("MPOS/S/SETTINGS/") + "bright.mrt", FILE_READ)) {
-    //addFileToList(&setFile);
+  if (openFile(setFile, "S/SETTINGS/BRIGHT.MRT", FILE_READ)) {
     brightnessPercent = setFile.readString().toInt();
-    closeFile(&setFile);
+    closeFile(setFile);
   }
 
-  if (setFile = SD.open(String("MPOS/S/SETTINGS/") + "blfilt.mrt", FILE_READ)) {
-    //addFileToList(&setFile);
+  if (openFile(setFile, "S/SETTINGS/BLFILT.MRT", FILE_READ)) {
     if (setFile.read() == 'Y') {
       blueFilter = true;
     }
-    closeFile(&setFile);
+    closeFile(setFile);
   }
 
-  if (setFile = SD.open(String("MPOS/S/SETTINGS/") + "colinvrt.mrt", FILE_READ)) {
-    //addFileToList(&setFile);
+  if (openFile(setFile, "S/SETTINGS/COLINVRT.MRT", FILE_READ)) {
     if (setFile.read() == 'Y') {
       invertColor = true;
     }
-    closeFile(&setFile);
+    closeFile(setFile);
   }
   
 
@@ -5859,43 +5864,38 @@ void setup() {
   showMCI("", String("/MPOS/S/") + "D/R/MCLOGO.MI2", 25, 350, 3, 3, false);
 
 
-  if (setFile = SD.open(String("MPOS/S/SETTINGS/") + "SOUND.MRT", FILE_READ)) {
-    //addFileToList(&setFile);
+  if (openFile(setFile, "S/SETTINGS/SOUND.MRT", FILE_READ)) {
     if (setFile.read() == 'N') {
       volume = false;
     }
-    closeFile(&setFile);
+    closeFile(setFile);
   }
 
-  if (setFile = SD.open(String("MPOS/S/SETTINGS/") + "NAME.MRT", FILE_READ)) {
-    //addFileToList(&setFile);
+  if (openFile(setFile, "S/SETTINGS/NAME.MRT", FILE_READ)) {
     deviceName = setFile.readString();
-    closeFile(&setFile);
+    closeFile(setFile);
   }
 
-  if (setFile = SD.open(String("MPOS/S/SETTINGS/") + "DARK.MRT", FILE_READ)) {
-    //addFileToList(&setFile);
+  if (openFile(setFile, "S/SETTINGS/DARK.MRT", FILE_READ)) {
     if (setFile.read() == 'Y') {
       darkMode = true;
     }
-    closeFile(&setFile);
+    closeFile(setFile);
   }
 
-  if (setFile = SD.open(String("MPOS/S/SETTINGS/") + "TRACK.MRT", FILE_READ)) {
-    //addFileToList(&setFile);
+  if (openFile(setFile, "S/SETTINGS/TRACK.MRT", FILE_READ)) {
     if (setFile.read() == 'N') {
       ramTracking = false;
     }
-    closeFile(&setFile);
+    closeFile(setFile);
   }
 
-  if (setFile = SD.open(String("MPOS/S/SETTINGS/") + "BLUA.MRT", FILE_READ)) {
-    //addFileToList(&setFile);
+  if (openFile(setFile, "S/SETTINGS/BLUA.MRT", FILE_READ)) {
     if (setFile.read() == 'Y') {
       bluetoothActive = true;
       bluetoothPowerOn();
     }
-    closeFile(&setFile);
+    closeFile(setFile);
   }
   
 
@@ -5912,12 +5912,12 @@ void setup() {
 
   //SD.remove(String("/MPOS/S/") + "BT/SAVE.MRT"); // temporary line
 
-  setFile = SD.open(String("/MPOS/S/") + "SCREEN.MLI", FILE_WRITE);
-  closeFile(&setFile);
-  setFile = SD.open(String("/MPOS/S/") + "SOUND.MRT", FILE_WRITE);
-  closeFile(&setFile);
-  setFile = SD.open(String("/MPOS/S/") + "NOTIF.MRT", FILE_WRITE);
-  closeFile(&setFile);
+  openFile(setFile, "S/SCREEN.MLI", FILE_WRITE);
+  closeFile(setFile);
+  openFile(setFile, "S/SOUND.MRT", FILE_WRITE);
+  closeFile(setFile);
+  openFile(setFile, "S/NOTIF.MRT", FILE_WRITE);
+  closeFile(setFile);
 
 
   setColor(0, 20, 30);
@@ -6236,10 +6236,10 @@ void loop() {
     if (BTRecieved.startsWith("+INQ:")) {
       BTRecieved.remove(0, 5);
       String mac = format_MAC(BTRecieved.substring(0, BTRecieved.indexOf(',')));
-      File file = SD.open(String("/MPOS/S/") + "BT/NEARBY.MRT", FILE_WRITE);
-      //addFileToList(&file);
+      File file;
+      openFile(file, "S/BT/NEARBY.MRT", FILE_WRITE);
       file.print(mac + "\n");
-      closeFile(&file);
+      closeFile(file);
       Serial.println("found MAC: " + mac);
       SETTINGS_newBTFound = true;
     }
@@ -6260,10 +6260,10 @@ void loop() {
       BTRecieved.remove(0, 5);
       BTRecieved.replace('\t', ' ');
       fileRemoveLineStartingWith(String("/MPOS/S/") + "BT/SAVE.MRT", BTConnectedMAC);
-      File file = SD.open(String("/MPOS/S/") + "BT/SAVE.MRT", FILE_WRITE);
-      //addFileToList(&file);
+      File file;
+      openFile(file, "S/BT/SAVE.MRT", FILE_WRITE);
       file.print(BTConnectedMAC + "\t" + BTRecieved + "\n");
-      closeFile(&file);
+      closeFile(file);
       Serial.println("bluetooth name set: " + BTRecieved);
     }
   }
