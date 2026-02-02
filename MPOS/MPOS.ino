@@ -1,4 +1,4 @@
-String CURRENT_VERSION = "2.4 BETA";
+String CURRENT_VERSION = "2.5 BETA";
 
 
 // default settings
@@ -1010,7 +1010,7 @@ bool removeFromFile(String path, String start, String end){
 
 
 
-void showMCI(String LABEL, String location, int startX, int startY, int scaleX, int scaleY, bool LOG = true) {
+void showMCI(String LABEL, String location, int startX, int startY, int scaleX, int scaleY, bool LOG = true, bool scaleIsTrueSize = false) {
   // works with both .mci and .mi2
   // .mi2 loads much faster
   // .mci only for backwards compatibility
@@ -1042,6 +1042,14 @@ void showMCI(String LABEL, String location, int startX, int startY, int scaleX, 
   graphFile.seek(0);
   int imageWidth = graphFile.readStringUntil(',').toInt();
   int imageHeight = graphFile.readStringUntil(',').toInt();
+
+  if (scaleIsTrueSize) {
+    scaleX = scaleX / imageWidth;
+    scaleY = scaleY / imageHeight;
+  }
+
+  if (scaleX == 0) {scaleX = 1;}
+  if (scaleY == 0) {scaleY = 1;}
 
 
   int currentWidth = 0;
@@ -3333,6 +3341,19 @@ void HOMESCREEN_START() {
 
   fillScr(50, 50, 50);
 
+  String backgroundPath = "";
+
+  if (SD.exists(String("/MPOS/S/") + "HOMESCR.MI2")) {
+    backgroundPath = String("/MPOS/S/") + "HOMESCR.MI2";
+  }
+  else if (SD.exists(String("/MPOS/S/") + "HOMESCR.MCI")) {
+    backgroundPath = String("/MPOS/S/") + "HOMESCR.MCI";
+  }
+
+  if (backgroundPath != ""){
+    showMCI("", backgroundPath, 0, 0, screen.getDisplayXSize(), screen.getDisplayYSize(), true, true);
+  }
+
   File layout;
   openFile(layout, "S/D/HOME.MRT", FILE_READ);
   unsigned int x = 50;
@@ -3345,16 +3366,23 @@ void HOMESCREEN_START() {
     }
 
     String appName = layout.readStringUntil('\n');
-    print("appNames", 255, 255, 255, 50, 50, 50, x, y+65, 0, "small", appName);
+    int8_t textOffset = 32 - 4 * appName.length();
+
+    fillRoundRect("borders", 160, 160, 160, x-5, y-5, x+65, y+80);
+    drawRoundRect("borders", 0, 0, 0, x-6, y-6, x+66, y+81);
+    drawRoundRect("borders", 0, 0, 0, x-7, y-7, x+67, y+82);
+    drawRoundRect("borders", 0, 0, 0, x-8, y-8, x+68, y+83);
+
+    print("appNames", 0, 0, 0, 160, 160, 160, x + textOffset, y+65, 0, "small", appName);
     if (appName.length() > 8){
       appName.remove(8);
     }
 
     if (SD.exists(String("/MPOS/S/") + "D/A/" + appName + ".MI2")) {
-      showMCI("icon", String("/MPOS/S/") + "D/A/" + appName + ".MI2", x, y, 3, 3);
+      showMCI("icon", String("/MPOS/S/") + "D/A/" + appName + ".MI2", x, y, 60, 60, true, true);
     }
     else{
-      showMCI("icon", String("/MPOS/S/") + "D/A/" + appName + ".MCI", x, y, 3, 3);
+      showMCI("icon", String("/MPOS/S/") + "D/A/" + appName + ".MCI", x, y, 60, 60, true, true);
     }
 
     x += 100;
@@ -3379,7 +3407,7 @@ void HOMESCREEN() {
       y += 150;
     }
 
-    if (touchGetX() > x and touchGetY() > y and touchGetX() < x+60 and touchGetY() < y+60){
+    if (touchGetX() > x-5 and touchGetY() > y-5 and touchGetX() < x+68 and touchGetY() < y+83){
       String appName = layout.readStringUntil('\n');
       appName.toUpperCase();
       closeFile(layout);
