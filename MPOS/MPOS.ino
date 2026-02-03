@@ -1054,6 +1054,9 @@ void showMCI(String LABEL, String location, int startX, int startY, int scaleX, 
 
   int currentWidth = 0;
   int currentHeight = 0;
+  byte buf[3*10];
+  byte bufOffset = 0;
+
   while (currentHeight < imageHeight) {
     while (currentWidth < imageWidth) {
       byte r;
@@ -1072,9 +1075,18 @@ void showMCI(String LABEL, String location, int startX, int startY, int scaleX, 
         b = bS.toInt();
       }
       else if (location.endsWith(".MI2")){
-        r = graphFile.read();
-        g = graphFile.read();
-        b = graphFile.read();
+        if (bufOffset == 0){
+          graphFile.read(buf, sizeof(buf));
+        }
+        
+        r = buf[bufOffset];
+        g = buf[bufOffset + 1];
+        b = buf[bufOffset + 2];
+
+        bufOffset += 3;
+        if (bufOffset >= sizeof(buf)){
+          bufOffset = 0;
+        }
       }
       setColor(r, g, b);
 
@@ -3122,7 +3134,7 @@ void recover_stack_from_file(){
 */
 
 void WDT_trigger() { // ensures no app has crashed the entire system
-  if (millis() - lastBackgroundTime > 15000){
+  if (millis() - lastBackgroundTime > 40000){
     longjmp(jmp_buffer, errorLevel);
   }
 }
@@ -3339,20 +3351,7 @@ void HOMESCREEN_START() {
   clearString(appPathArg);
   clearString(allowedExt);
 
-  fillScr(50, 50, 50);
-
-  String backgroundPath = "";
-
-  if (SD.exists(String("/MPOS/S/") + "HOMESCR.MI2")) {
-    backgroundPath = String("/MPOS/S/") + "HOMESCR.MI2";
-  }
-  else if (SD.exists(String("/MPOS/S/") + "HOMESCR.MCI")) {
-    backgroundPath = String("/MPOS/S/") + "HOMESCR.MCI";
-  }
-
-  if (backgroundPath != ""){
-    showMCI("", backgroundPath, 0, 0, screen.getDisplayXSize(), screen.getDisplayYSize(), true, true);
-  }
+  HOMESCREEN_showBackground();
 
   File layout;
   openFile(layout, "S/D/HOME.MRT", FILE_READ);
@@ -3423,7 +3422,22 @@ void HOMESCREEN() {
   closeFile(layout);
 }
 
+void HOMESCREEN_showBackground(){
+  fillScr(50, 50, 50);
 
+  String backgroundPath = "";
+
+  if (SD.exists(String("/MPOS/S/") + "D/HOMESCR.MI2")) {
+    backgroundPath = String("/MPOS/S/") + "D/HOMESCR.MI2";
+  }
+  else if (SD.exists(String("/MPOS/S/") + "D/HOMESCR.MCI")) {
+    backgroundPath = String("/MPOS/S/") + "D/HOMESCR.MCI";
+  }
+
+  if (backgroundPath != ""){
+    showMCI("", backgroundPath, 0, 0, screen.getDisplayXSize(), screen.getDisplayYSize(), true, true);
+  }
+}
 
 
 
@@ -5883,7 +5897,7 @@ void setup() {
   }
   
 
-  //SPI.setClockDivider(SPI_CLOCK_DIV4);
+  SPI.setClockDivider(SPI_CLOCK_DIV2);
 
 
 
@@ -5987,7 +6001,8 @@ void setup() {
 
     bool authenticated = false;
     bool askingPass = false;
-    fillScr(0, 0, 0);
+    //fillScr(0, 0, 0);
+    HOMESCREEN_showBackground();
 
     setColor(200, 200, 200);
     screen.fillRoundRect(20, 580, screen.getDisplayXSize() - 20, 620);
