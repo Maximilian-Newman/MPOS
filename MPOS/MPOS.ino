@@ -29,9 +29,7 @@ bool bluetoothActive = false;
 #include "WatchDog.h"
 #include <setjmp.h>
 
-
 #include <MFRC522.h>
-//#include <SPI.h>
 
 
 #define blu_EN A12
@@ -1032,6 +1030,8 @@ void showMCI(String LABEL, String location, int startX, int startY, int scaleX, 
     graphFile.print(scaleX);
     graphFile.print(",");
     graphFile.print(scaleY);
+    graphFile.print(",");
+    graphFile.print(int(scaleIsTrueSize));
     graphFile.print(",\n");
     closeFile(graphFile);
 
@@ -1252,6 +1252,10 @@ void setColor(byte r, byte g, byte b) {
 }
 
 void setBackColor(byte r, byte g, byte b) {
+  if (r == 1 and g == 1 and b == 1){
+    screen.setBackColor(VGA_TRANSPARENT);
+    return;
+  }
 
   if (invertColor) {
     r = 255 - r;
@@ -1905,7 +1909,6 @@ void refreshScreen(bool sysOnly = false) {
   openFile(graphFile, "S/SCREEN.MLI", FILE_READ);
   CONTROLLING_APP = prevControl;
 
-  //addFileToList(&graphFile);
   graphFile.seek(0);
 
   while (graphFile.available()) {
@@ -2042,17 +2045,18 @@ void refreshScreen(bool sysOnly = false) {
         String path = graphFile.readStringUntil(',');
         int startX = graphFile.readStringUntil(',').toInt();
         int startY = graphFile.readStringUntil(',').toInt();
-        byte scaleX = graphFile.readStringUntil(',').toInt();
-        byte scaleY = graphFile.readStringUntil(',').toInt();
-        showMCI("", path, startX, startY, scaleX, scaleY, false);
+        int scaleX = graphFile.readStringUntil(',').toInt();
+        int scaleY = graphFile.readStringUntil(',').toInt();
+        bool scaleIsTrueSize = graphFile.readStringUntil(',').toInt();
+        showMCI("", path, startX, startY, scaleX, scaleY, false, scaleIsTrueSize);
       }
 
       if (shape == "BIM") {
         String path = graphFile.readStringUntil(',');
         int startX = graphFile.readStringUntil(',').toInt();
         int startY = graphFile.readStringUntil(',').toInt();
-        byte scaleX = graphFile.readStringUntil(',').toInt();
-        byte scaleY = graphFile.readStringUntil(',').toInt();
+        int scaleX = graphFile.readStringUntil(',').toInt();
+        int scaleY = graphFile.readStringUntil(',').toInt();
         byte backR = graphFile.readStringUntil(',').toInt();
         byte backG = graphFile.readStringUntil(',').toInt();
         byte backB = graphFile.readStringUntil(',').toInt();
@@ -2066,8 +2070,8 @@ void refreshScreen(bool sysOnly = false) {
         String path = graphFile.readStringUntil(',');
         int startX = graphFile.readStringUntil(',').toInt();
         int startY = graphFile.readStringUntil(',').toInt();
-        byte scaleX = graphFile.readStringUntil(',').toInt();
-        byte scaleY = graphFile.readStringUntil(',').toInt();
+        int scaleX = graphFile.readStringUntil(',').toInt();
+        int scaleY = graphFile.readStringUntil(',').toInt();
         showMLI("", path, startX, startY, scaleX, scaleY, false);
       }
     }
@@ -2910,6 +2914,23 @@ bool create_new_pass() {
 }
 
 
+void showLockScreen(){
+  HOMESCREEN_showBackground();
+
+  setColor(200, 200, 200);
+  screen.fillRoundRect(20, 580, screen.getDisplayXSize() - 20, 620);
+  screen.fillRoundRect(20, screen.getDisplayYSize() - 100, screen.getDisplayXSize() - 20, screen.getDisplayYSize() - 50);
+  setColor(20, 20, 20);
+  screen.drawRoundRect(19, screen.getDisplayYSize() - 99, screen.getDisplayXSize() - 19, screen.getDisplayYSize() - 49);
+  screen.drawRoundRect(18, screen.getDisplayYSize() - 98, screen.getDisplayXSize() - 18, screen.getDisplayYSize() - 48);
+  screen.drawRoundRect(17, screen.getDisplayYSize() - 97, screen.getDisplayXSize() - 17, screen.getDisplayYSize() - 47);
+
+  screen.drawRoundRect(19, 579, screen.getDisplayXSize() - 19, 621);
+  screen.drawRoundRect(18, 578, screen.getDisplayXSize() - 18, 622);
+  screen.drawRoundRect(17, 577, screen.getDisplayXSize() - 17, 623);
+}
+
+
 
 
 
@@ -3035,6 +3056,7 @@ void factoryReset() {
   screen.print(F("Your device has been factory-"), 0, 50);
   screen.print(F("reset. Restart it to continue"), 0, 100);
   delay(5000);
+  bluetooth_power_off();
   digitalWrite(powerPin, LOW);
   while (true);
 }
@@ -3209,6 +3231,7 @@ void handle_jmp(){
 
   else if (result == 2){
     WatchDog::stop();
+    bluetooth_power_off();
     digitalWrite(powerPin, LOW);
     while (true);
   }
@@ -3260,15 +3283,12 @@ void set_app(String appName) {
     }
 
 
-
-
-
     else {
       set_app("HOME");
       addNotification("OS ERROR", String(F("Invalid app redirect to '")) + appName + "'.");
     }
 
-    refreshScreen(true); // re-draw system graphics (notifications, home button, time ...)
+    refreshScreen(true); // re-draw system graphics on top (notifications, home button, time ...)
 
   }
   CONTROLLING_APP = prev_control;
@@ -6001,16 +6021,7 @@ void setup() {
 
     bool authenticated = false;
     bool askingPass = false;
-    //fillScr(0, 0, 0);
-    HOMESCREEN_showBackground();
-
-    setColor(200, 200, 200);
-    screen.fillRoundRect(20, 580, screen.getDisplayXSize() - 20, 620);
-    screen.fillRoundRect(20, screen.getDisplayYSize() - 100, screen.getDisplayXSize() - 20, screen.getDisplayYSize() - 50);
-    //screen.fillRoundRect(20, 680, screen.getDisplayXSize() - 20, 720);
-    //setColor(255, 255, 255);
-    //screen.drawRoundRect(20, 580, screen.getDisplayXSize() - 20, 620);
-    //screen.drawRoundRect(20, 680, screen.getDisplayXSize() - 20, 720);
+    showLockScreen();
 
     lastTouchRead = millis() - 100; // start shutdown timer at 0 without affecting touchGetX() outputs
 
@@ -6036,20 +6047,13 @@ void setup() {
           showPassInputScreen();
         }
         if (passResult == 3) {
-          fillScr(0, 0, 0);
-          setColor(200, 200, 200);
-          screen.fillRoundRect(20, 580, screen.getDisplayXSize() - 20, 620);
-          screen.fillRoundRect(20, screen.getDisplayYSize() - 100, screen.getDisplayXSize() - 20, screen.getDisplayYSize() - 50);
-          //screen.fillRoundRect(20, 680, screen.getDisplayXSize() - 20, 720);
-          //setColor(255, 255, 255);
-          //screen.drawRoundRect(20, 580, screen.getDisplayXSize() - 20, 620);
-          //screen.drawRoundRect(20, 680, screen.getDisplayXSize() - 20, 720);
+          showLockScreen();
           askingPass = false;
         }
       }
       else {
         setColor(255, 255, 255);
-        setBackColor(0, 0, 0);
+        setBackColor(1, 1, 1); // transparent
         screen.setFont(BigFont);
         screen.print(getDateString(), CENTER, 180);
         screen.setFont(segment18_XXL);
@@ -6073,6 +6077,7 @@ void setup() {
         }
 
         if (millis() - lastTouchRead > 20000) { // shut down if not touched in 20 seconds
+          bluetooth_power_off();
           digitalWrite(powerPin, LOW);
           while (true);
         }
@@ -6123,8 +6128,10 @@ void setup() {
   SYS_nextLoadSampleTime = t + sampleIntervals;
   SYS_loadSampleTime = t;
 
+  CONTROLLING_APP = "SYS";
+  scr_removeApp("SYS");
   set_app("HOME");
-  //addNotification("Test Notifiation", "test");
+
   lastBackgroundTime = millis(); // prevent immediate watchdog trigger
   WatchDog::init(WDT_trigger, 500);
 
