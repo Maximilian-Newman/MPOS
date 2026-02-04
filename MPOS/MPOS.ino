@@ -2903,7 +2903,7 @@ byte askForPass() {
 bool create_new_pass() {
   if (askForPass() != 0) {
     File passFile;
-    openFile(passFile, "S/PASSWORD.MRT", FILE_WRITE);
+    openFile(passFile, "S/D/PASSWORD.MRT", FILE_WRITE);
     passFile.print(enteredPass);
     closeFile(passFile);
     return false; // process finished
@@ -2980,7 +2980,7 @@ void showTopBar() {
 
   topBarShowsBluetooth = false;
   if (millis() - BTLastPing < 10000) {
-    showBIM("top-bar", String("/MPOS/S/") + "D/R/BTON.BIM", screen.getDisplayXSize() - 10 - iconPosition, 0, 1, 1, b_color, b_color, b_color, color, color, color);
+    showBIM("top-bar", "S/D/R/BTON.BIM", screen.getDisplayXSize() - 10 - iconPosition, 0, 1, 1, b_color, b_color, b_color, color, color, color);
     iconPosition += 10;
     topBarShowsBluetooth = true;
   }
@@ -3398,10 +3398,10 @@ void HOMESCREEN_START() {
     }
 
     if (SD.exists(String("/MPOS/S/") + "D/A/" + appName + ".MI2")) {
-      showMCI("icon", String("/MPOS/S/") + "D/A/" + appName + ".MI2", x, y, 60, 60, true, true);
+      showMCI("icon", "S/D/A/" + appName + ".MI2", x, y, 60, 60, true, true);
     }
     else{
-      showMCI("icon", String("/MPOS/S/") + "D/A/" + appName + ".MCI", x, y, 60, 60, true, true);
+      showMCI("icon", "S/D/A/" + appName + ".MCI", x, y, 60, 60, true, true);
     }
 
     x += 100;
@@ -3476,26 +3476,8 @@ void SETTINGS_START() {
   fillScr(240, 240, 240);
   if (SETTINGS_page == "") {
     print("", 0, 0, 0, 240, 240, 240, 20, 30, 0, "large", "Settings");
-    print("", 0, 0, 0, 240, 240, 240, 20, 100, 0, "medium", "About");
-    print("", 0, 0, 0, 240, 240, 240, 20, 140, 0, "medium", "Device Name");
-    print("", 0, 0, 0, 240, 240, 240, 20, 180, 0, "medium", "Network");
-    print("", 0, 0, 0, 240, 240, 240, 20, 220, 0, "medium", "Processes");
-    print("", 0, 0, 0, 240, 240, 240, 20, 260, 0, "medium", "Time");
-    print("", 0, 0, 0, 240, 240, 240, 20, 300, 0, "medium", "Display Options");
-    print("", 0, 0, 0, 240, 240, 240, 20, 340, 0, "medium", "Sound");
-    print("", 0, 0, 0, 240, 240, 240, 20, 380, 0, "medium", "Shut Down");
-    print("", 0, 0, 0, 240, 240, 240, 20, 420, 0, "medium", "Factory Reset");
 
-    drawLine("", 100, 100, 100, 0, 90, screen.getDisplayXSize(), 90);
-    drawLine("", 100, 100, 100, 0, 130, screen.getDisplayXSize(), 130);
-    drawLine("", 100, 100, 100, 0, 170, screen.getDisplayXSize(), 170);
-    drawLine("", 100, 100, 100, 0, 210, screen.getDisplayXSize(), 210);
-    drawLine("", 100, 100, 100, 0, 250, screen.getDisplayXSize(), 250);
-    drawLine("", 100, 100, 100, 0, 290, screen.getDisplayXSize(), 290);
-    drawLine("", 100, 100, 100, 0, 330, screen.getDisplayXSize(), 330);
-    drawLine("", 100, 100, 100, 0, 370, screen.getDisplayXSize(), 370);
-    drawLine("", 100, 100, 100, 0, 410, screen.getDisplayXSize(), 410);
-    drawLine("", 100, 100, 100, 0, 450, screen.getDisplayXSize(), 450);
+    SETTINGS_showList("main", 100, 40);
   }
 
   if (SETTINGS_page == "About") {
@@ -3517,19 +3499,22 @@ void SETTINGS_START() {
 
   if (SETTINGS_page == "Network") {
     print("", 0, 0, 0, 240, 240, 240, 20, 30, 0, "large", F("<- Settings - Network"));
-    drawLine("", 100, 100, 100, 0, 90, screen.getDisplayXSize(), 90);
+
+    /*drawLine("", 100, 100, 100, 0, 90, screen.getDisplayXSize(), 90);
     drawLine("", 100, 100, 100, 0, 130, screen.getDisplayXSize(), 130);
     drawLine("", 100, 100, 100, 0, 170, screen.getDisplayXSize(), 170);
     drawLine("", 100, 100, 100, 0, 210, screen.getDisplayXSize(), 210);
     print("", 0, 0, 0, 240, 240, 240, 20, 100, 0, "medium", F("Bluetooth Power:"));
     print("", 0, 0, 0, 240, 240, 240, 20, 140, 0, "medium", F("Manage Devices"));
-    print("", 0, 0, 0, 240, 240, 240, 20, 180, 0, "medium", F("Pair New Device"));
+    print("", 0, 0, 0, 240, 240, 240, 20, 180, 0, "medium", F("Pair New Device"));*/
+    SETTINGS_showList("NET", 100, 40);
+
     on_off_input("bt-switch", screen.getDisplayXSize() - 70, 110, bluetoothActive);
   }
 
   if (SETTINGS_page == "WiFi") {
     print("", 0, 0, 0, 240, 240, 240, 20, 30, 0, "large", F("<- Settings - WiFi"));
-    print("", 0, 0, 0, 240, 240, 240, 20, 90, 0, "medium", "unavailable - coming soon!");
+    print("", 0, 0, 0, 240, 240, 240, 20, 90, 0, "medium", F("unavailable - coming soon!"));
   }
 
   if (SETTINGS_page == "Bluetooth") {
@@ -3694,12 +3679,12 @@ void SETTINGS_START() {
   if (SETTINGS_page == "Time") {
     print("", 0, 0, 0, 240, 240, 240, 20, 30, 0, "large", F("<- Settings - Time"));
 
-    showBIM("buttons", String("/MPOS/S/") + "D/R/UP.BIM", 130, 100, 4, 4, 240, 240, 240, 0, 0, 0);
-    showBIM("buttons", String("/MPOS/S/") + "D/R/UP.BIM", 220, 100, 4, 4, 240, 240, 240, 0, 0, 0);
-    showBIM("buttons", String("/MPOS/S/") + "D/R/UP.BIM", 320, 100, 4, 4, 240, 240, 240, 0, 0, 0);
-    showBIM("buttons", String("/MPOS/S/") + "D/R/DOWN.BIM", 130, 210, 4, 4, 240, 240, 240, 0, 0, 0);
-    showBIM("buttons", String("/MPOS/S/") + "D/R/DOWN.BIM", 220, 210, 4, 4, 240, 240, 240, 0, 0, 0);
-    showBIM("buttons", String("/MPOS/S/") + "D/R/DOWN.BIM", 320, 210, 4, 4, 240, 240, 240, 0, 0, 0);
+    showBIM("buttons", "S/D/R/UP.BIM", 130, 100, 4, 4, 240, 240, 240, 0, 0, 0);
+    showBIM("buttons", "S/D/R/UP.BIM", 220, 100, 4, 4, 240, 240, 240, 0, 0, 0);
+    showBIM("buttons", "S/D/R/UP.BIM", 320, 100, 4, 4, 240, 240, 240, 0, 0, 0);
+    showBIM("buttons", "S/D/R/DOWN.BIM", 130, 210, 4, 4, 240, 240, 240, 0, 0, 0);
+    showBIM("buttons", "S/D/R/DOWN.BIM", 220, 210, 4, 4, 240, 240, 240, 0, 0, 0);
+    showBIM("buttons", "S/D/R/DOWN.BIM", 320, 210, 4, 4, 240, 240, 240, 0, 0, 0);
   }
 
   if (SETTINGS_page == "Display") {
@@ -3713,21 +3698,22 @@ void SETTINGS_START() {
     fillCircle("brightness-scroll", 255, 255, 255, X_length, 130, 10);
     drawCircle("brightness-scroll", 0, 0, 0, X_length, 130, 11);
 
+    SETTINGS_showList("DISP", 175, 50);
 
-    print("", 0, 0, 0, 240, 240, 240, 20, 175, 0, "medium", F("Blue light filter:"));
+    //print("", 0, 0, 0, 240, 240, 240, 20, 175, 0, "medium", F("Blue light filter:"));
     on_off_input("bluelight-filter-switch", screen.getDisplayXSize() - 70, 185, blueFilter);
 
-    print("", 0, 0, 0, 240, 240, 240, 20, 225, 0, "medium", F("Invert Colors:"));
+    //print("", 0, 0, 0, 240, 240, 240, 20, 225, 0, "medium", F("Invert Colors:"));
     on_off_input("invert-color-switch", screen.getDisplayXSize() - 70, 235, invertColor);
 
-    print("", 0, 0, 0, 240, 240, 240, 20, 275, 0, "medium", "Dark Mode:");
+    //print("", 0, 0, 0, 240, 240, 240, 20, 275, 0, "medium", "Dark Mode:");
     on_off_input("dark-mode-switch", screen.getDisplayXSize() - 70, 285, darkMode);
 
     drawLine("", 100, 100, 100, 0, 90, screen.getDisplayXSize(), 90);
-    drawLine("", 100, 100, 100, 0, 160, screen.getDisplayXSize(), 160);
+    /*drawLine("", 100, 100, 100, 0, 160, screen.getDisplayXSize(), 160);
     drawLine("", 100, 100, 100, 0, 210, screen.getDisplayXSize(), 210);
     drawLine("", 100, 100, 100, 0, 260, screen.getDisplayXSize(), 260);
-    drawLine("", 100, 100, 100, 0, 310, screen.getDisplayXSize(), 310);
+    drawLine("", 100, 100, 100, 0, 310, screen.getDisplayXSize(), 310);*/
 
   }
 
@@ -4080,14 +4066,14 @@ void SETTINGS() {
     if (SETTINGS_newRAMDataAvailable){
       SETTINGS_newRAMDataAvailable = false;
       scr_removeLayer("RAMChart");
-      drawGraph("RAMChart", 20, 110, screen.getDisplayXSize()-20, 250, 30, 0, 100, String("/MPOS/S/") + "RAM.MRT");
+      drawGraph("RAMChart", 20, 110, screen.getDisplayXSize()-20, 250, 30, 0, 100, "S/RAM.MRT");
       print("RAMChart", 0, 0, 0, 240, 240, 240, RIGHT, 90, 0, "medium", "  " + String(lastRAM) + "% ");
     }
 
     else if (SETTINGS_newLoadDataAvailable){
       SETTINGS_newLoadDataAvailable = false;
       scr_removeLayer("timeChart");
-      drawGraph("timeChart", 20, 310, screen.getDisplayXSize()-20, 450, 30, 0, 1500, String("/MPOS/S/") + "LOAD.MRT");
+      drawGraph("timeChart", 20, 310, screen.getDisplayXSize()-20, 450, 30, 0, 1500, "S/LOAD.MRT");
       print("timeChart", 0, 0, 0, 240, 240, 240, RIGHT, 290, 0, "medium", "  " + String(lastSampleTime) + "ms ");
     }
     if (touch.dataAvailable()){
@@ -4410,6 +4396,44 @@ void SETTINGS() {
 }
 
 
+void SETTINGS_showList(String path, unsigned int y, byte sep){
+  path = String("/MPOS/S/") + "D/R/SP/" + path + ".MRT";
+
+  drawLine("", 100, 100, 100, 0, y-sep/4, screen.getDisplayXSize(), y-sep/4);
+  File file;
+  openFile(file, path, FILE_READ);
+  while (file.available()){
+    String text = file.readStringUntil('\n');
+
+    print("", 0, 0, 0, 240, 240, 240, 20, y, 0, "medium", text);
+    drawLine("", 100, 100, 100, 0, y+sep*3/4, screen.getDisplayXSize(), y+sep*3/4);
+    y += sep;
+
+
+
+    /*print("", 0, 0, 0, 240, 240, 240, 20, 30, 0, "large", "Settings");
+    print("", 0, 0, 0, 240, 240, 240, 20, 100, 0, "medium", "About");
+    print("", 0, 0, 0, 240, 240, 240, 20, 140, 0, "medium", "Device Name");
+    print("", 0, 0, 0, 240, 240, 240, 20, 180, 0, "medium", "Network");
+    print("", 0, 0, 0, 240, 240, 240, 20, 220, 0, "medium", "Processes");
+    print("", 0, 0, 0, 240, 240, 240, 20, 260, 0, "medium", "Time");
+    print("", 0, 0, 0, 240, 240, 240, 20, 300, 0, "medium", "Display Options");
+    print("", 0, 0, 0, 240, 240, 240, 20, 340, 0, "medium", "Sound");
+    print("", 0, 0, 0, 240, 240, 240, 20, 380, 0, "medium", "Shut Down");
+    print("", 0, 0, 0, 240, 240, 240, 20, 420, 0, "medium", "Factory Reset");
+
+    drawLine("", 100, 100, 100, 0, 90, screen.getDisplayXSize(), 90);
+    drawLine("", 100, 100, 100, 0, 130, screen.getDisplayXSize(), 130);
+    drawLine("", 100, 100, 100, 0, 170, screen.getDisplayXSize(), 170);
+    drawLine("", 100, 100, 100, 0, 210, screen.getDisplayXSize(), 210);
+    drawLine("", 100, 100, 100, 0, 250, screen.getDisplayXSize(), 250);
+    drawLine("", 100, 100, 100, 0, 290, screen.getDisplayXSize(), 290);*/
+
+  }
+  closeFile(file);
+}
+
+
 
 void SETTINGS_QUIT(){
   clearString(SETTINGS_page);
@@ -4483,7 +4507,7 @@ void FILES_START() {
     print("fileName", 0, 0, 0, 255, 255, 255, 50, yPos, 0, "medium", fName);
 
     if (entry.isDirectory()) { // draw icon next to name
-      showBIM("fileName", String("/MPOS/S/") + "D/R/FOLDER.BIM", 10, yPos-5, 2, 2, 255, 255, 255, 50, 50, 100);
+      showBIM("fileName", "S/D/R/FOLDER.BIM", 10, yPos-5, 2, 2, 255, 255, 255, 50, 50, 100);
     } else {
       unsigned long fSize = entry.size();
       if (fSize > pow(2024, 9)){
@@ -4746,8 +4770,8 @@ void TEXT_START(){
     print("buttons", 255, 255, 255, 20, 60, 255, 45, 35, 0, "large", "X");
     print("buttons", 255, 255, 255, 20, 60, 255, 35, 65, 0, "small", "close");
 
-    showBIM("buttons", String("/MPOS/S/") + "D/R/UP.BIM", screen.getDisplayXSize()-50, 170, 4, 6, 20, 60, 255, 255, 255, 255);
-    showBIM("buttons", String("/MPOS/S/") + "D/R/DOWN.BIM", screen.getDisplayXSize()-50, 280, 4, 6, 20, 60, 255, 255, 255, 255);
+    showBIM("buttons", "S/D/R/UP.BIM", screen.getDisplayXSize()-50, 170, 4, 6, 20, 60, 255, 255, 255, 255);
+    showBIM("buttons", "S/D/R/DOWN.BIM", screen.getDisplayXSize()-50, 280, 4, 6, 20, 60, 255, 255, 255, 255);
     
     TEXT_cursorPosition = 0;
     TEXT_print(TEXT_fileContent, TEXT_cursorPosition);
@@ -6016,7 +6040,7 @@ void setup() {
   */
 
 
-  if (SD.exists(String("/MPOS/S/") + "D/password.mrt")) { // is set up, phone used before
+  if (SD.exists(String("/MPOS/S/") + "D/PASSWORD.MRT")) { // is set up, phone used before
 
 
     bool authenticated = false;
