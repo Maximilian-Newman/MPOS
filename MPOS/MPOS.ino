@@ -321,8 +321,7 @@ void closeAllFiles(){
 }
 
 
-
-bool openFile(File &file, String path, uint8_t mode){
+String sanitizeFilePath(String path){
   if (path.startsWith("/")) {path.remove(0, 1);}
   if (path.startsWith("MPOS/")) {path.remove(0, 5);}
 
@@ -342,9 +341,15 @@ bool openFile(File &file, String path, uint8_t mode){
     pathStart += "F/";
   }
 
-  file = SD.open(pathStart + path, mode); // don't replace with openFile()
+  return pathStart + path;
+}
+
+bool openFile(File &file, String path, uint8_t mode, bool reg=true){
+  path = sanitizeFilePath(path);
+
+  file = SD.open(path, mode); // don't replace with openFile()
   if (file) {
-    addFileToList(&file);
+    if (reg) {addFileToList(&file);}
     return true;
   }
   return false;
@@ -353,6 +358,22 @@ bool openFile(File &file, String path, uint8_t mode){
 void closeFile(File &file){
   removeFileFromList(&file);
   file.close();
+}
+
+bool mkdir(String path){
+  return SD.mkdir(sanitizeFilePath(path));
+}
+
+bool rmdir(String path){
+  return SD.rmdir(sanitizeFilePath(path));
+}
+
+bool deleteFile(String path){
+  return SD.remove(sanitizeFilePath(path));
+}
+
+bool fileExists(String path){
+  return SD.exists(sanitizeFilePath(path));
 }
 
 
@@ -417,7 +438,7 @@ void playTone(int freq, int duration) {
 
 void addSound(unsigned long Time, int freq, int duration) {
   Time += millis();
-  SD.remove(String("/MPOS/S/") + "SOUNDT.MRT");
+  deleteFile("S/SOUNDT.MRT");
   File soundLogR;
   openFile(soundLogR, "S/SOUND.MRT", FILE_READ);
   File soundLogW;
@@ -452,7 +473,7 @@ void addSound(unsigned long Time, int freq, int duration) {
   }
   closeFile(soundLogW);
   closeFile(soundLogR);
-  SD.remove(String("/MPOS/S/") + "SOUND.MRT");
+  deleteFile("S/SOUND.MRT");
 
   openFile(soundLogW, "S/SOUND.MRT", FILE_WRITE);
   openFile(soundLogR, "S/SOUNDT.MRT", FILE_READ);
@@ -464,7 +485,7 @@ void addSound(unsigned long Time, int freq, int duration) {
   sample_RAM();
   closeFile(soundLogW);
   closeFile(soundLogR);
-  SD.remove(String("/MPOS/S/") + "SOUNDT.MRT");
+  deleteFile("S/SOUNDT.MRT");
 }
 
 
@@ -577,7 +598,7 @@ byte RFIDbuffer[18];
 byte RFIDsize = 18;
 
 void RFIDCardDataToFile() {
-  SD.remove(String("/MPOS/S/") + "RFID.MRT");
+  deleteFile("S/RFID.MRT");
   File cardData;
   openFile(cardData, "S/RFID.MRT", FILE_WRITE);
 
@@ -938,7 +959,7 @@ int encrypt1(int input) {
 
 
 bool removeFromFile(String path, String start, String end){
-  SD.remove(String("/MPOS/S/") + "TEMP.MRT");
+  deleteFile("S/TEMP.MRT");
   File file;
   if (openFile(file, path, FILE_READ)){
     File tempFile;
@@ -979,7 +1000,7 @@ bool removeFromFile(String path, String start, String end){
     
     closeFile(file);
     closeFile(tempFile);
-    SD.remove(path);
+    deleteFile(path);
     openFile(file, path, FILE_WRITE);
     openFile(tempFile, "S/TEMP.MRT", FILE_READ);
     
@@ -1614,7 +1635,7 @@ void scr_removeApp(String app) {
 void fileInsertStart(String path, String insert, unsigned int numLoops, byte linesPerLoop){
   File file;
   if (openFile(file, path, FILE_READ)){
-    SD.remove(String("/MPOS/S/") + "TEMP.MRT");
+    deleteFile("S/TEMP.MRT");
     File tempFile;
     openFile(tempFile, "S/TEMP.MRT", FILE_WRITE);
     for (byte i=0; i<numLoops; i++){
@@ -1633,7 +1654,7 @@ void fileInsertStart(String path, String insert, unsigned int numLoops, byte lin
     closeFile(file);
     closeFile(tempFile);
   
-    SD.remove(path);
+    deleteFile(path);
     openFile(tempFile, "S/TEMP.MRT", FILE_READ);
     openFile(file, path, FILE_WRITE);
 
@@ -1662,7 +1683,7 @@ void fileInsertStart(String path, String insert, unsigned int numLoops, byte lin
 
 void fileRemoveLineStartingWith(String path, String startToRemove) {
 
-  SD.remove(String("/MPOS/S/") + "T_DEL.MRT");
+  deleteFile("S/T_DEL.MRT");
 
   File file;
   openFile(file, path, FILE_READ);
@@ -1689,7 +1710,7 @@ void fileRemoveLineStartingWith(String path, String startToRemove) {
   closeFile(temporaryFile);
 
   // copy new version from temporary file to permanent file
-  SD.remove(path);
+  deleteFile(path);
   openFile(temporaryFile, "S/T_DEL.MRT", FILE_READ);
   openFile(file, path, FILE_WRITE);
 
@@ -1701,7 +1722,7 @@ void fileRemoveLineStartingWith(String path, String startToRemove) {
 
   closeFile(file);
   closeFile(temporaryFile);
-  SD.remove(String("/MPOS/S/") + "T_DEL.MRT");
+  deleteFile("S/T_DEL.MRT");
 }
 
 
@@ -2257,7 +2278,7 @@ void bluetooth_set_slave(){
 }
 
 void bluetooth_scan(){
-  SD.remove(String("/MPOS/S/") + "BT/NEARBY.MRT");
+  deleteFile("S/BT/NEARBY.MRT");
   if (bluetoothActive) {
     bluetooth_set_master();
     bluetooth_exit_AT();
@@ -2997,8 +3018,8 @@ void deleteDirectory(String dirName) {
     dirName = dirName.substring(0, dirName.length()-1);
   }
   
-  File dir = SD.open(dirName); // openFile() doesn't support directories yet
-  //addFileToList(&dir);
+  File dir;
+  openFile(dir, dirName, O_READ, false);
   while (true) {
     File entry =  dir.openNextFile();
     //addFileToList(&entry);
@@ -3012,12 +3033,12 @@ void deleteDirectory(String dirName) {
     if (entry.isDirectory()) {
       deleteDirectory(entryName);
     } else {
-      SD.remove(entryName);
+      deleteFile(entryName);
     }
     closeFile(entry);
   }
   closeFile(dir);
-  SD.rmdir(dirName);
+  rmdir(dirName);
 }
 
 
@@ -3028,25 +3049,25 @@ void factoryReset() {
     return;
   }
 
-  SD.remove(String("/MPOS/S/") + "D/password.mrt");
-  SD.remove(String("/MPOS/S/") + "screen.mli");
-  SD.remove(String("/MPOS/S/") + "SOUNDT.MRT");
-  SD.remove(String("/MPOS/S/") + "SOUND.MRT");
-  SD.remove(String("/MPOS/S/") + "NOTIF.MRT");
-  SD.remove(String("MPOS/S/SETTINGS/") + "blfilt.mrt");
-  SD.remove(String("MPOS/S/SETTINGS/") + "colinvrt.mrt");
-  SD.remove(String("MPOS/S/SETTINGS/") + "sound.mrt");
-  SD.remove(String("MPOS/S/SETTINGS/") + "blfilt.mrt");
-  SD.remove(String("MPOS/S/SETTINGS/") + "bright.mrt");
-  SD.remove(String("MPOS/S/SETTINGS/") + "NAME.MRT");
-  SD.remove(String("MPOS/S/SETTINGS/") + "DARK.MRT");
-  SD.remove(String("MPOS/S/SETTINGS/") + "TRACK.MRT");
-  SD.remove(String("MPOS/S/SETTINGS/") + "BLUA.MRT");
-  SD.remove(String("/MPOS/S/") + "BT/SAVE.MRT");
+  deleteFile("S/D/PASSWORD.MRT");
+  deleteFile("S/SCREEN.MLI");
+  deleteFile("S/SOUNDT.MRT");
+  deleteFile("S/SOUND.MRT");
+  deleteFile("S/NOTIF.MRT");
+  deleteFile(String("S/SETTINGS/") + "blfilt.mrt");
+  deleteFile(String("S/SETTINGS/") + "colinvrt.mrt");
+  deleteFile(String("S/SETTINGS/") + "sound.mrt");
+  deleteFile(String("S/SETTINGS/") + "blfilt.mrt");
+  deleteFile(String("S/SETTINGS/") + "bright.mrt");
+  deleteFile(String("S/SETTINGS/") + "NAME.MRT");
+  deleteFile(String("S/SETTINGS/") + "DARK.MRT");
+  deleteFile(String("S/SETTINGS/") + "TRACK.MRT");
+  deleteFile(String("S/SETTINGS/") + "BLUA.MRT");
+  deleteFile("S/BT/SAVE.MRT");
   
 
-  deleteDirectory("/MPOS/F/");
-  SD.mkdir("/MPOS/F/");
+  deleteDirectory("F/");
+  mkdir("F/");
 
 
   setColor(255, 255, 255);
@@ -3397,7 +3418,7 @@ void HOMESCREEN_START() {
       appName.remove(8);
     }
 
-    if (SD.exists(String("/MPOS/S/") + "D/A/" + appName + ".MI2")) {
+    if (fileExists("S/D/A/" + appName + ".MI2")) {
       showMCI("icon", "S/D/A/" + appName + ".MI2", x, y, 60, 60, true, true);
     }
     else{
@@ -3447,11 +3468,11 @@ void HOMESCREEN_showBackground(){
 
   String backgroundPath = "";
 
-  if (SD.exists(String("/MPOS/S/") + "D/HOMESCR.MI2")) {
-    backgroundPath = String("/MPOS/S/") + "D/HOMESCR.MI2";
+  if (fileExists("S/D/HOMESCR.MI2")) {
+    backgroundPath = "S/D/HOMESCR.MI2";
   }
-  else if (SD.exists(String("/MPOS/S/") + "D/HOMESCR.MCI")) {
-    backgroundPath = String("/MPOS/S/") + "D/HOMESCR.MCI";
+  else if (fileExists("S/D/HOMESCR.MCI")) {
+    backgroundPath = "S/D/HOMESCR.MCI";
   }
 
   if (backgroundPath != ""){
@@ -3820,9 +3841,9 @@ void SETTINGS() {
       hide_keyboard();
       SETTINGS_START();
 
-      SD.remove(String("MPOS/S/SETTINGS/") + "NAME.MRT");
+      deleteFile(String("S/SETTINGS/") + "NAME.MRT");
       File setFile;
-      openFile(setFile, "S/SETTINGS/NAME.MRT", FILE_WRITE);
+      openFile(setFile, String("S/SETTINGS/") + "NAME.MRT", FILE_WRITE);
       setFile.print(deviceName);
       closeFile(setFile);
     }
@@ -3841,9 +3862,9 @@ void SETTINGS() {
 
 
       if (touchGetX() > screen.getDisplayXSize() - 75 and touchGetY() > 95 and touchGetX() < screen.getDisplayXSize() - 15 and touchGetY() < 125) { // bluetooth switch
-        SD.remove(String("MPOS/S/SETTINGS/") + "BLUA.MRT");
+        deleteFile(String("S/SETTINGS/") + "BLUA.MRT");
         File setFile;
-        openFile(setFile, "S/SETTINGS/BLUA.MRT", FILE_WRITE);
+        openFile(setFile, String("S/SETTINGS/") + "BLUA.MRT", FILE_WRITE);
         if (bluetoothActive == true) {
           setFile.print("N");
           bluetooth_power_off();
@@ -4085,9 +4106,9 @@ void SETTINGS() {
       }
 
       else if (touchGetY() > 475 and touchGetY() < 525 and touchGetX() > screen.getDisplayXSize()-75 and touchGetX() < screen.getDisplayXSize()-15){
-        SD.remove(String("MPOS/S/SETTINGS/") + "TRACK.MRT");
+        deleteFile(String("S/SETTINGS/") + "TRACK.MRT");
         File setFile;
-        openFile(setFile, "S/SETTINGS/TRACK.MRT", FILE_WRITE);
+        openFile(setFile, String("S/SETTINGS/") + "TRACK.MRT", FILE_WRITE);
         if (ramTracking){
           ramTracking = false;
           setFile.print('N');
@@ -4195,8 +4216,8 @@ void SETTINGS() {
           }
           closeFile(file);
         }
-        SD.remove(String("/MPOS/S/SETTINGS/") + "BACKGRD.MRT");
-        openFile(file, "S/SETTINGS/BACKGRD.MRT", FILE_WRITE);
+        deleteFile(String("S/SETTINGS/") + "BACKGRD.MRT");
+        openFile(file, String("S/SETTINGS/") + "BACKGRD.MRT", FILE_WRITE);
         file.print(backAllow);
         closeFile(file);
       }
@@ -4284,9 +4305,9 @@ void SETTINGS() {
 
       brightnessPercent = map(newBright, 20, screen.getDisplayXSize() - 20, 10, 100);
 
-      SD.remove(String("MPOS/S/SETTINGS/") + "bright.mrt");
+      deleteFile(String("S/SETTINGS/") + "BRIGHT.MRT");
       File setFile;
-      openFile(setFile, "S/SETTINGS/BRIGHT.MRT", FILE_WRITE);
+      openFile(setFile, String("S/SETTINGS/") + "BRIGHT.MRT", FILE_WRITE);
       setFile.print(brightnessPercent);
       closeFile(setFile);
 
@@ -4303,9 +4324,9 @@ void SETTINGS() {
     }
 
     if (touchGetX() > screen.getDisplayXSize() - 75 and touchGetY() > 170 and touchGetX() < screen.getDisplayXSize() - 15 and touchGetY() < 200) { // switch bluelight filter
-      SD.remove(String("MPOS/S/SETTINGS/") + "blfilt.mrt");
+      deleteFile(String("S/SETTINGS/") + "BLFILT.MRT");
       File setFile;
-      openFile(setFile, "S/SETTINGS/BLFILT.MRT", FILE_WRITE);
+      openFile(setFile, String("S/SETTINGS/") + "BLFILT.MRT", FILE_WRITE);
       if (blueFilter == true) {
         setFile.print("N");
         blueFilter = false;
@@ -4323,9 +4344,9 @@ void SETTINGS() {
     }
 
     if (touchGetX() > screen.getDisplayXSize() - 75 and touchGetY() > 220 and touchGetX() < screen.getDisplayXSize() - 15 and touchGetY() < 250) { // switch color invert
-      SD.remove(String("MPOS/S/SETTINGS/") + "colinvrt.mrt");
+      deleteFile(String("S/SETTINGS/") + "COLINVRT.MRT");
       File setFile;
-      openFile(setFile, "S/SETTINGS/COLINVRT.MRT", FILE_WRITE);
+      openFile(setFile, String("S/SETTINGS/") + "COLINVRT.MRT", FILE_WRITE);
       if (invertColor == true) {
         setFile.print("N");
         invertColor = false;
@@ -4343,9 +4364,9 @@ void SETTINGS() {
     }
 
     if (touchGetX() > screen.getDisplayXSize() - 75 and touchGetY() > 270 and touchGetX() < screen.getDisplayXSize() - 15 and touchGetY() < 300) { // switch dark mode
-      SD.remove(String("MPOS/S/SETTINGS/") + "DARK.MRT");
+      deleteFile(String("S/SETTINGS/") + "DARK.MRT");
       File setFile;
-      openFile(setFile, "S/SETTINGS/DARK.MRT", FILE_WRITE);
+      openFile(setFile, String("S/SETTINGS/") + "DARK.MRT", FILE_WRITE);
       if (darkMode == true) {
         setFile.print("N");
         darkMode = false;
@@ -4375,9 +4396,9 @@ void SETTINGS() {
     }
 
     if (touchGetX() > screen.getDisplayXSize() - 75 and touchGetY() > 95 and touchGetX() < screen.getDisplayXSize() - 15 and touchGetY() < 125) { // mute switch
-      SD.remove(String("MPOS/S/SETTINGS/") + "sound.mrt");
+      deleteFile(String("S/SETTINGS/") + "SOUND.MRT");
       File setFile;
-      openFile(setFile, "S/SETTINGS/SOUND.MRT", FILE_WRITE);
+      openFile(setFile, String("S/SETTINGS/") + "SOUND.MRT", FILE_WRITE);
       if (volume == true) {
         setFile.print("N");
         volume = false;
@@ -4463,7 +4484,7 @@ void FILES_START() {
   if ( ! (FILES_ROOT + appPathArg).endsWith("/")){
     appPathArg += "/";
   }
-  if (!SD.exists(FILES_ROOT + appPathArg)){ // reset to root if directory doesn't exist
+  if (!fileExists(FILES_ROOT + appPathArg)){ // reset to root if directory doesn't exist
     addNotification("Files Error!", "The directory: '" + appPathArg + "' doesn't exist. As a consequence, you have been redirected to the root directory.");
     clearString(appPathArg);
     FILES_START();
@@ -4474,8 +4495,8 @@ void FILES_START() {
   clearString(FILES_selected);
   FILES_lastYPos = 0;
 
-  File dir = SD.open(FILES_ROOT + appPathArg, FILE_READ); // openFile() doesn't support directories yet
-  //addFileToList(&dir);
+  File dir;
+  openFile(dir, FILES_ROOT + appPathArg, FILE_READ);
 
   print("head", 0, 0, 0, 255, 255, 255, CENTER, 20, 0, "large", "Files");
   print("head", 0, 0, 0, 255, 255, 255, 10, 55, 0, "small", "/" + appPathArg);
@@ -4497,7 +4518,6 @@ void FILES_START() {
     drawLine("divider", 10, 10, 10, 0, yPos - 20, screen.getDisplayXSize(), yPos - 20);
 
     File entry =  dir.openNextFile();
-    //addFileToList(&entry);
     
     if (! entry) {
       break;
@@ -4609,7 +4629,7 @@ void FILES() {
   
       hide_keyboard();
       
-      if (!SD.mkdir(FILES_ROOT + appPathArg + newFolderName)){
+      if (!mkdir(FILES_ROOT + appPathArg + newFolderName)){
         addNotification("Files Error!", F("Failed to create new folder"));
       }
       FILES_START();
@@ -4646,12 +4666,12 @@ void FILES() {
     if (touchGetX() > screen.getDisplayXSize()/2 + 30 and touchGetX() < screen.getDisplayXSize() - 20){ // delete
       if (confirmation_message("Are you sure you", "want to delete", "this file?")){
         if (FILES_selected.endsWith("/")) { // if folder
-          if (!SD.rmdir(FILES_ROOT + FILES_selected)){
+          if (!rmdir(FILES_ROOT + FILES_selected)){
             addNotification("Files Error!", F("Couldn't delete the folder."));
           }
         }
         else{
-          if (!SD.remove(FILES_ROOT + FILES_selected)){
+          if (!deleteFile(FILES_ROOT + FILES_selected)){
             addNotification("Files Error!", F("Couldn't delete the file."));
           }
         }
@@ -4675,8 +4695,8 @@ void FILES() {
   
   unsigned int yPos = 130;
   
-  File dir = SD.open(FILES_ROOT + appPathArg, FILE_READ); // openFile() doesn't support directories yet
-  //addFileToList(&dir);
+  File dir;
+  openFile(dir, FILES_ROOT + appPathArg, FILE_READ);
   
   while (true) { // loop for each file
     yPos += 50;
@@ -4795,7 +4815,7 @@ void TEXT_START(){
     print("menu", 0, 0, 0, 255, 0, 0, CENTER, 320, 0, "medium", "Create new file");
   }
 
-  else if (!SD.exists(appPathArg)){
+  else if (!fileExists(appPathArg)){
     addNotification("Text Editor ERROR!", "The file '" + appPathArg + "' doesn't exist.");
     clearString(appPathArg);
     TEXT_START();
@@ -5073,9 +5093,9 @@ void TEXT_clearCache(){
   bool searching = true;
   byte tfilenum = 0;
   while (searching){
-    String tFileName = String("/MPOS/S/") + "TEXT/" + String(tfilenum) + ".txt";
-    if (SD.exists(tFileName)){
-      SD.remove(tFileName);
+    String tFileName = "S/TEXT/" + String(tfilenum) + ".txt";
+    if (fileExists(tFileName)){
+      deleteFile(tFileName);
     }
     else{
       searching = false;
@@ -5139,7 +5159,7 @@ unsigned int TEXT_saveBlock(){ // returns size of first file buffer size (out of
   String fileName1 = "S/TEXT/" + String(TEXT_blockNumber) + ".txt";
   String fileName2 = "S/TEXT/" + String(TEXT_blockNumber + 1) + ".txt";
 
-  SD.remove(fileName1);
+  deleteFile(fileName1);
 
   if (TEXT_fileContent.length() < TEXT_BLOCK_SIZE){
     File file;
@@ -5147,10 +5167,10 @@ unsigned int TEXT_saveBlock(){ // returns size of first file buffer size (out of
     file.print(TEXT_fileContent);
     closeFile(file);
     
-    if (SD.exists(fileName2)){
-      SD.remove(fileName2);
+    if (fileExists(fileName2)){
+      deleteFile(fileName2);
       openFile(file, fileName2, FILE_WRITE);
-      file.close();
+      closeFile(file);
     }
 
     TEXT_editSinceLastSaved = false;
@@ -5158,7 +5178,7 @@ unsigned int TEXT_saveBlock(){ // returns size of first file buffer size (out of
   }
 
   else{
-    SD.remove(fileName2);
+    deleteFile(fileName2);
 
     unsigned int splitIndex = TEXT_fileContent.length() / 2;
     File file;
@@ -5182,7 +5202,7 @@ void TEXT_saveFullFile(){
   if (!TEXT_editSinceLastFullSave){return;}
 
   TEXT_saveBlock();
-  SD.remove(TEXT_filePath);
+  deleteFile(TEXT_filePath);
 
   File file;
   openFile(file, TEXT_filePath, FILE_WRITE);
@@ -5235,7 +5255,7 @@ void TEXT_loadFullFile(){
 void TEXT_loadBlock(){ // load text from 2 cached sections into TEXT_fileContent String
   clearString(TEXT_fileContent);
 
-  if (!SD.exists(String("/MPOS/S/") + "TEXT/" + String(TEXT_blockNumber+1) + ".txt")) {
+  if (!fileExists("S/TEXT/" + String(TEXT_blockNumber+1) + ".TXT")) {
     TEXT_blockNumber -= 1;
   }
   if (TEXT_blockNumber > 65500){ // if underflowed (because unsigned int)
@@ -5244,7 +5264,7 @@ void TEXT_loadBlock(){ // load text from 2 cached sections into TEXT_fileContent
 
   for (byte i=0; i<2; i++){
     File file;
-    if (openFile(file, "S/TEXT/" + String(TEXT_blockNumber + i) + ".txt", FILE_READ)){
+    if (openFile(file, "S/TEXT/" + String(TEXT_blockNumber + i) + ".TXT", FILE_READ)){
       TEXT_fileContent += file.readString();
       closeFile(file);
     }
@@ -5449,7 +5469,7 @@ void RFID(){
               if (fileNum >= 10){
                 fName.remove(0, 1);
               }
-              SD.remove(RFID_path + fName);
+              deleteFile(RFID_path + fName);
               if (openFile(file, RFID_path + fName, FILE_WRITE)){
                 copying = true;
                 search.remove(0, search.indexOf("<end fileName " + String(fileNum) + "><content: ") + 26);
@@ -5667,7 +5687,7 @@ void RFID(){
           setFont("medium");
           screen.print("Writing...", CENTER, 610);
           
-          SD.remove(String("/MPOS/S/") + "RFID.MRT"); // create blank file
+          deleteFile("S/RFID.MRT"); // create blank file
           File cardFile;
           openFile(cardFile, "S/RFID.MRT", FILE_WRITE);
           closeFile(cardFile);
@@ -5736,7 +5756,7 @@ void BACKGROUND_NOTIFS(){
     if (showNotification(notifTitle, notifDescription)) {
 
       // remove displayed notification from file
-      SD.remove(String("/MPOS/S/") + "NOTIFT.MRT");
+      deleteFile("S/NOTIFT.MRT");
       File tempFile;
       openFile(tempFile, "S/NOTIFT.MRT", FILE_WRITE);
       while (notifFile.available()) {
@@ -5746,7 +5766,7 @@ void BACKGROUND_NOTIFS(){
       }
       closeFile(notifFile);
       closeFile(tempFile);
-      SD.remove(String("/MPOS/S/") + "NOTIF.MRT");
+      deleteFile("S/NOTIF.MRT");
 
       openFile(tempFile, "S/NOTIFT.MRT", FILE_READ);
       openFile(notifFile, "S/NOTIF.MRT", FILE_WRITE);
@@ -5828,7 +5848,7 @@ void process_sound(){ // needs to run much more frequently than normal backgroun
         unsigned int duration = soundLogR.readStringUntil('\n').toInt();
         playTone(freq, duration);
 
-        SD.remove(String("/MPOS/S/") + "SOUNDT.MRT");
+        deleteFile("S/SOUNDT.MRT");
         File soundLogW;
         openFile(soundLogW, "S/SOUNDT.MRT", FILE_WRITE);
         while (soundLogR.available()) {
@@ -5838,7 +5858,7 @@ void process_sound(){ // needs to run much more frequently than normal backgroun
 
         closeFile(soundLogR);
         closeFile(soundLogW);
-        SD.remove(String("/MPOS/S/") + "SOUND.MRT");
+        deleteFile("S/SOUND.MRT");
 
         openFile(soundLogW, "S/SOUND.MRT", FILE_WRITE);
         openFile(soundLogR, "S/SOUNDT.MRT", FILE_READ);
@@ -5850,7 +5870,7 @@ void process_sound(){ // needs to run much more frequently than normal backgroun
 
         closeFile(soundLogR);
         closeFile(soundLogW);
-        SD.remove(String("/MPOS/S/") + "SOUNDT.MRT");
+        deleteFile("S/SOUNDT.MRT");
       }
     }
     closeFile(soundLogR);
@@ -5987,14 +6007,14 @@ void setup() {
 
 
 
-  SD.remove(String("/MPOS/S/") + "SCREEN.MLI");
-  SD.remove(String("/MPOS/S/") + "SOUNDT.MRT");
-  SD.remove(String("/MPOS/S/") + "SOUND.MRT");
-  SD.remove(String("/MPOS/S/") + "NOTIF.MRT");
-  SD.remove(String("/MPOS/S/") + "RAM.MRT");
-  SD.remove(String("/MPOS/S/") + "LOAD.MRT");
-  SD.remove(String("/MPOS/S/") + "BT/NEARBY.MRT");
-  SD.remove(String("/MPOS/S/") + "RECOV.MRT");
+  deleteFile("S/SCREEN.MLI");
+  deleteFile("S/SOUNDT.MRT");
+  deleteFile("S/SOUND.MRT");
+  deleteFile("S/NOTIF.MRT");
+  deleteFile("S/RAM.MRT");
+  deleteFile("S/LOAD.MRT");
+  deleteFile("S/BT/NEARBY.MRT");
+  deleteFile("S/RECOV.MRT");
 
   //SD.remove(String("/MPOS/S/") + "BT/SAVE.MRT"); // temporary line
 
@@ -6040,7 +6060,7 @@ void setup() {
   */
 
 
-  if (SD.exists(String("/MPOS/S/") + "D/PASSWORD.MRT")) { // is set up, phone used before
+  if (fileExists("S/D/PASSWORD.MRT")) { // is set up, phone used before
 
 
     bool authenticated = false;
@@ -6091,7 +6111,6 @@ void setup() {
         setBackColor(200, 200, 200);
         setColor(random(0, 255), random(0, 255), random(0, 255));
         screen.print(F("Click here to unlock"), CENTER, 595);
-        //screen.print(F("Click here to shut down"), CENTER, 695);
         screen.fillRoundRect(30, screen.getDisplayYSize() - 90, loadBarPos, screen.getDisplayYSize() - 60);
 
         if (touch.dataAvailable()) {
