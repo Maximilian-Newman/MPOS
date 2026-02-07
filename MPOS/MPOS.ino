@@ -1623,12 +1623,12 @@ void drawGraph(String label, int startX, int startY, unsigned int endX, unsigned
 
 void scr_removeLayer(String LABEL) {
   LABEL = CONTROLLING_APP + "_" + LABEL;
-  fileRemoveLineStartingWith(String("/MPOS/S/") + "screen.mli", LABEL);
+  fileRemoveLineStartingWith("S/screen.mli", LABEL);
 }
 
 void scr_removeApp(String app) {
   if (CONTROLLING_APP == "SYS") {
-    fileRemoveLineStartingWith(String("/MPOS/S/") + "screen.mli", app + "_");
+    fileRemoveLineStartingWith("S/screen.mli", app + "_");
   }
 }
 
@@ -2114,9 +2114,9 @@ void refreshScreen(bool sysOnly = false) {
 
 
 void on_off_input(String LABEL, int x, int y, bool state) {
-  String path = String("/MPOS/S/") + "D/R/SWI-OFF.MLI";
+  String path = "S/D/R/SWI-OFF.MLI";
   if (state == true) {
-    path = String("/MPOS/S/") + "D/R/SWI-ON.MLI";
+    path = "S/D/R/SWI-ON.MLI";
   }
 
   showMLI(LABEL, path, x, y, 1, 1);
@@ -2995,7 +2995,7 @@ void showTopBar() {
   byte iconPosition = 0;
 
   //if (wifi_connected) {
-  //  showBIM("wifi-icon", String("/MPOS/S/") + "D/R/WIFION.BIM", screen.getDisplayXSize() - 20 - iconPosition, 0, 1, 1, b_color, b_color, b_color, color, color, color);
+  //  showBIM("wifi-icon", "S/D/R/WIFION.BIM", screen.getDisplayXSize() - 20 - iconPosition, 0, 1, 1, b_color, b_color, b_color, color, color, color);
   //  iconPosition += 20;
   //}
 
@@ -3048,6 +3048,7 @@ void factoryReset() {
   if (confirmation_message("Are you sure you want", F("to Factory Reset your"), "device?") == false) {
     return;
   }
+  bluetooth_power_off();
 
   deleteFile("S/D/PASSWORD.MRT");
   deleteFile("S/SCREEN.MLI");
@@ -3077,7 +3078,6 @@ void factoryReset() {
   screen.print(F("Your device has been factory-"), 0, 50);
   screen.print(F("reset. Restart it to continue"), 0, 100);
   delay(5000);
-  bluetooth_power_off();
   digitalWrite(powerPin, LOW);
   while (true);
 }
@@ -3147,7 +3147,7 @@ void copy_stack_to_file(){
     : "=r" (stackpointer)
   );
 
-  File file = SD.open(String("/MPOS/S/") + "RECOV.MRT", FILE_WRITE);
+  File file = SD.open("S/RECOV.MRT", FILE_WRITE);
   //file.print(stackpointer);
   //file.print("\n");
   for (uint8_t* i=RAMEND; i>=stackpointer; i++){
@@ -3164,7 +3164,7 @@ void copy_stack_to_file(){
 void recover_stack_from_file(){
   WatchDog::stop();
   uint8_t* i = RAMEND;
-  File file = SD.open(String("/MPOS/S/") + "RECOV.MRT", FILE_READ);
+  File file = SD.open("S/RECOV.MRT", FILE_READ);
   while (file.available()){
     *i = file.readStringUntil('\n').toInt();
     Serial.println(*i);
@@ -3642,7 +3642,7 @@ void SETTINGS_START() {
       closeFile(file);
     }
     else{
-      addNotification("Missing File", F("The root file '/MPOS/S/D/APPS.MRT' was not found."));
+      addNotification("Missing File", F("The root file 'S/D/APPS.MRT' was not found."));
     }
   }
 
@@ -3662,7 +3662,7 @@ void SETTINGS_START() {
     else{
       openFile(file, "S/SETTINGS/BACKGRD.MRT", FILE_WRITE);
       closeFile(file);
-      addNotification("Missing File", F("The root file '/MPOS/S/SETTINGS/BACKGRD.MRT' was not found."));
+      addNotification("Missing File", F("The root file '/S/SETTINGS/BACKGRD.MRT' was not found."));
     }
 
     Serial.println(backAllow);
@@ -3693,7 +3693,7 @@ void SETTINGS_START() {
       closeFile(file);
     }
     else{
-      addNotification("Missing File", F("The root file '/MPOS/S/D/ABTASKS.MRT' was not found."));
+      addNotification("Missing File", F("The root file 'S/D/ABTASKS.MRT' was not found."));
     }
   }
 
@@ -3951,7 +3951,7 @@ void SETTINGS() {
         bluetooth_connect(SETTINGS_enteredMAC);
       }
       else{
-        fileRemoveLineStartingWith(String("/MPOS/S/") + "BT/SAVE.MRT", SETTINGS_enteredMAC);
+        fileRemoveLineStartingWith("S/BT/SAVE.MRT", SETTINGS_enteredMAC);
         SETTINGS_page = "Bluetooth";
         scr_removeLayer("");
         SETTINGS_START();
@@ -4418,7 +4418,7 @@ void SETTINGS() {
 
 
 void SETTINGS_showList(String path, unsigned int y, byte sep){
-  path = String("/MPOS/S/") + "D/R/SP/" + path + ".MRT";
+  path = "S/D/R/SP/" + path + ".MRT";
 
   drawLine("", 100, 100, 100, 0, y-sep/4, screen.getDisplayXSize(), y-sep/4);
   File file;
@@ -4473,7 +4473,7 @@ void SETTINGS_QUIT(){
 
 String FILES_selected = "";
 unsigned int FILES_lastYPos = 0;
-#define FILES_ROOT "/MPOS/F/"
+#define FILES_ROOT "F/"
 
 void FILES_START() {
   scr_removeLayer("");
@@ -4823,43 +4823,6 @@ void TEXT_START(){
 
   else { // file just selected, get file ready
     TEXT_filePath = appPathArg;
-    
-/*
-    TEXT_clearCache();
-    File file = SD.open(TEXT_filePath, FILE_READ);
-    //addFileToList(&file);
-
-    unsigned int tfilenum = 0;
-
-    // copy file into split temporary buffer files
-
-    while (file.available()) {
-      String tFileName = String("/MPOS/S/") + "TEXT/" + String(tfilenum) + ".txt";
-      String buf = "";
-      buf.reserve(TEXT_BLOCK_SIZE + 1);
-      for (byte i=0; i<TEXT_BLOCK_SIZE; i++){
-        if (file.available()){
-          buf += char(file.read());
-        }
-      }
-
-      File tempFile = SD.open(tFileName, FILE_WRITE);
-      //addFileToList(&tempFile);
-      tempFile.print(buf);
-      closeFile(tempFile);
-      tfilenum += 1;
-    }
-
-    //TEXT_fileContent = file.readString();
-    //clearString(TEXT_fileContent);
-    //while (file.available()){
-    //  TEXT_fileContent += char(file.read());
-    //}
-
-    closeFile(file);
-    TEXT_blockNumber = 0;
-    TEXT_loadBlock();*/
-
     TEXT_blockNumber = 0;
     TEXT_loadFullFile();
     TEXT_START();
@@ -4870,8 +4833,6 @@ void TEXT_START(){
 
 
 void TEXT(){
-
-  //while (true); // simulate crash
 
 
   if (TEXT_filePath == ""){
@@ -4925,18 +4886,18 @@ void TEXT(){
       
       if (touchGetX() > screen.getDisplayXSize()-60){
         if (touchGetY() > 150 and touchGetY() < 250){ // up button
-          showBIM("buttons", String("/MPOS/S/") + "D/R/UP.BIM", screen.getDisplayXSize()-50, 170, 4, 6, 20, 60, 255, 0, 200, 0);
+          showBIM("buttons", "S/D/R/UP.BIM", screen.getDisplayXSize()-50, 170, 4, 6, 20, 60, 255, 0, 200, 0);
           unsigned int remainingSize = TEXT_saveBlock();
           TEXT_blockNumber -= 1;
           TEXT_loadBlock();
           TEXT_cursorPosition += TEXT_fileContent.length() - remainingSize;
           if (TEXT_cursorPosition > TEXT_fileContent.length()) {TEXT_cursorPosition = TEXT_fileContent.length();}
           TEXT_print(TEXT_fileContent, TEXT_cursorPosition, true);
-          showBIM("buttons", String("/MPOS/S/") + "D/R/UP.BIM", screen.getDisplayXSize()-50, 170, 4, 6, 20, 60, 255, 255, 255, 255);
+          showBIM("buttons", "S/D/R/UP.BIM", screen.getDisplayXSize()-50, 170, 4, 6, 20, 60, 255, 255, 255, 255);
         }
         else if (touchGetY() > 260 and touchGetY() < 360){ // down button
 
-          showBIM("buttons", String("/MPOS/S/") + "D/R/DOWN.BIM", screen.getDisplayXSize()-50, 280, 4, 6, 20, 60, 255, 0, 200, 0);
+          showBIM("buttons", "S/D/R/DOWN.BIM", screen.getDisplayXSize()-50, 280, 4, 6, 20, 60, 255, 0, 200, 0);
 
           TEXT_cursorPosition -= TEXT_saveBlock();
           TEXT_blockNumber += 1;
@@ -4944,7 +4905,7 @@ void TEXT(){
           if (TEXT_cursorPosition < 0) {TEXT_cursorPosition = 0;}
           TEXT_print(TEXT_fileContent, TEXT_cursorPosition, true);
 
-          showBIM("buttons", String("/MPOS/S/") + "D/R/DOWN.BIM", screen.getDisplayXSize()-50, 280, 4, 6, 20, 60, 255, 255, 255, 255);
+          showBIM("buttons", "S/D/R/DOWN.BIM", screen.getDisplayXSize()-50, 280, 4, 6, 20, 60, 255, 255, 255, 255);
         }
       }
 
@@ -4984,20 +4945,20 @@ void TEXT(){
     }
 
     if (TEXT_fileContent.length() > 3 * TEXT_BLOCK_SIZE){
-      showBIM("buttons", String("/MPOS/S/") + "D/R/DOWN.BIM", screen.getDisplayXSize()-50, 280, 4, 6, 20, 60, 255, 0, 200, 0);
+      showBIM("buttons", "S/D/R/DOWN.BIM", screen.getDisplayXSize()-50, 280, 4, 6, 20, 60, 255, 0, 200, 0);
       TEXT_saveFullFile();
       TEXT_blockNumber += 1;
       TEXT_loadFullFile();
       TEXT_print(TEXT_fileContent, TEXT_cursorPosition, true);
-      showBIM("buttons", String("/MPOS/S/") + "D/R/DOWN.BIM", screen.getDisplayXSize()-50, 280, 4, 6, 20, 60, 255, 255, 200, 255);
+      showBIM("buttons", "S/D/R/DOWN.BIM", screen.getDisplayXSize()-50, 280, 4, 6, 20, 60, 255, 255, 200, 255);
     }
     else if (TEXT_fileContent.length() == 0 and TEXT_blockNumber > 0){
-      showBIM("buttons", String("/MPOS/S/") + "D/R/UP.BIM", screen.getDisplayXSize()-50, 170, 4, 6, 20, 60, 255, 0, 200, 0);
+      showBIM("buttons", "S/D/R/UP.BIM", screen.getDisplayXSize()-50, 170, 4, 6, 20, 60, 255, 0, 200, 0);
       TEXT_saveFullFile();
       TEXT_blockNumber -= 1;
       TEXT_loadFullFile();
       TEXT_print(TEXT_fileContent, TEXT_cursorPosition, true);
-      showBIM("buttons", String("/MPOS/S/") + "D/R/UP.BIM", screen.getDisplayXSize()-50, 170, 4, 6, 20, 60, 255, 255, 255, 255);
+      showBIM("buttons", "S/D/R/UP.BIM", screen.getDisplayXSize()-50, 170, 4, 6, 20, 60, 255, 255, 255, 255);
     }
   }
 }
@@ -5090,10 +5051,14 @@ void TEXT_print(String file, int cursorPos, bool clearPrev = false){
 
 
 void TEXT_clearCache(){
+  deleteDirectory("S/TEXT/");
+  mkdir("S/TEXT/");
+
+  /* OLD VERSION:
   bool searching = true;
   byte tfilenum = 0;
   while (searching){
-    String tFileName = "S/TEXT/" + String(tfilenum) + ".txt";
+    String tFileName = "S/TEXT/" + String(tfilenum) + ".TXT";
     if (fileExists(tFileName)){
       deleteFile(tFileName);
     }
@@ -5101,7 +5066,7 @@ void TEXT_clearCache(){
       searching = false;
     }
     tfilenum += 1;
-  }
+  }*/
 }
 
 unsigned int TEXT_getPos(String file, unsigned int x, unsigned int y){
@@ -5210,7 +5175,7 @@ void TEXT_saveFullFile(){
   String buf = "";
   buf.reserve(TEXT_BLOCK_SIZE + 1);
   File tempFile;
-  while (openFile(tempFile, "S/TEXT/" + String(i) + ".txt", FILE_READ)){
+  while (openFile(tempFile, "S/TEXT/" + String(i) + ".TXT", FILE_READ)){
     buf = tempFile.readString();
     closeFile(tempFile);
     file.print(buf);
@@ -5231,7 +5196,7 @@ void TEXT_loadFullFile(){
   // copy file into split temporary buffer files
 
   while (file.available()) {
-    String tFileName = String("/MPOS/S/") + "TEXT/" + String(tfilenum) + ".txt";
+    String tFileName = "S/TEXT/" + String(tfilenum) + ".TXT";
     String buf = "";
     buf.reserve(TEXT_BLOCK_SIZE + 1);
     for (byte i=0; i<TEXT_BLOCK_SIZE; i++){
@@ -5622,7 +5587,7 @@ void RFID(){
           screen.print("Writing...", CENTER, 610);
           
           RFIDCardDataToFile();
-          removeFromFile(String("/MPOS/S/") + "RFID.MRT", "<keyMacro:", "keyMacro>");
+          removeFromFile("S/RFID.MRT", "<keyMacro:", "keyMacro>");
           File cardFile;
           openFile(cardFile, "S/RFID.MRT", FILE_WRITE);
           
@@ -5813,7 +5778,7 @@ void BACKGROUND_RAM_MONITOR(){
   if (ramTracking){
     if (SYS_RAMSampleTime < millis()){
       SYS_RAMSampleTime += sampleIntervals;
-      fileInsertStart(String("/MPOS/S/") + "RAM.MRT", String(currentRAM) + '\n', 10, 3);
+      fileInsertStart("S/RAM.MRT", String(currentRAM) + '\n', 10, 3);
       lastRAM = currentRAM;
       currentRAM = 0;
       sample_RAM();
@@ -5825,7 +5790,7 @@ void BACKGROUND_RAM_MONITOR(){
       SYS_nextLoadSampleTime += sampleIntervals;
       unsigned long currentSampleTime = (millis()-SYS_loadSampleTime) / currentSampleLoopPasses;
       currentSampleLoopPasses = 0;
-      fileInsertStart(String("/MPOS/S/") + "LOAD.MRT", String(currentSampleTime) + '\n', 10, 3);
+      fileInsertStart("S/LOAD.MRT", String(currentSampleTime) + '\n', 10, 3);
       lastSampleTime = currentSampleTime;
       SYS_loadSampleTime = millis();
       sample_RAM();
@@ -5967,7 +5932,7 @@ void setup() {
 
   fillScr(255, 255, 255);
 
-  showMCI("", String("/MPOS/S/") + "D/R/MCLOGO.MI2", 25, 350, 3, 3, false);
+  showMCI("", "S/D/R/MCLOGO.MI2", 25, 350, 3, 3, false);
 
 
   if (openFile(setFile, "S/SETTINGS/SOUND.MRT", FILE_READ)) {
@@ -6016,7 +5981,7 @@ void setup() {
   deleteFile("S/BT/NEARBY.MRT");
   deleteFile("S/RECOV.MRT");
 
-  //SD.remove(String("/MPOS/S/") + "BT/SAVE.MRT"); // temporary line
+  //SD.remove("S/BT/SAVE.MRT"); // temporary line
 
   openFile(setFile, "S/SCREEN.MLI", FILE_WRITE);
   closeFile(setFile);
@@ -6352,7 +6317,7 @@ void loop() {
     else if (BTRecieved.startsWith("NAME:") and BTConnectedMAC != "") {
       BTRecieved.remove(0, 5);
       BTRecieved.replace('\t', ' ');
-      fileRemoveLineStartingWith(String("/MPOS/S/") + "BT/SAVE.MRT", BTConnectedMAC);
+      fileRemoveLineStartingWith("S/BT/SAVE.MRT", BTConnectedMAC);
       File file;
       openFile(file, "S/BT/SAVE.MRT", FILE_WRITE);
       file.print(BTConnectedMAC + "\t" + BTRecieved + "\n");
