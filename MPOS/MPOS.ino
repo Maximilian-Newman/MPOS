@@ -347,6 +347,10 @@ String sanitizeFilePath(String path){
 bool openFile(File &file, String path, uint8_t mode, bool reg=true){
   path = sanitizeFilePath(path);
 
+  if (mode != FILE_READ and path.startsWith("MPOS/S/D/R/")) {
+    return false; // resources folder read-only
+  }
+
   file = SD.open(path, mode); // don't replace with openFile()
   if (file) {
     if (reg) {addFileToList(&file);}
@@ -369,7 +373,9 @@ bool rmdir(String path){
 }
 
 bool deleteFile(String path){
-  return SD.remove(sanitizeFilePath(path));
+  path = sanitizeFilePath(path);
+  if (path.startsWith("MPOS/S/D/R/")) {return false;} // resources folder read-only
+  return SD.remove(path);
 }
 
 bool fileExists(String path){
@@ -3484,13 +3490,13 @@ void HOMESCREEN_showBackground(){
 
 
 
-
 String SETTINGS_page = "";
 bool SETTINGS_newRAMDataAvailable = false;
 bool SETTINGS_newLoadDataAvailable = false;
 bool SETTINGS_newBTFound = false;
 byte SETTINGS_listSize = 0;
 String SETTINGS_enteredMAC = "";
+const byte MENU_SPACING = 60;
 
 
 void SETTINGS_START() {
@@ -3498,7 +3504,7 @@ void SETTINGS_START() {
   if (SETTINGS_page == "") {
     print("", 0, 0, 0, 240, 240, 240, 20, 30, 0, "large", "Settings");
 
-    SETTINGS_showList("main", 100, 40);
+    SETTINGS_showList("main", 90, MENU_SPACING);
   }
 
   if (SETTINGS_page == "About") {
@@ -3528,7 +3534,7 @@ void SETTINGS_START() {
     print("", 0, 0, 0, 240, 240, 240, 20, 100, 0, "medium", F("Bluetooth Power:"));
     print("", 0, 0, 0, 240, 240, 240, 20, 140, 0, "medium", F("Manage Devices"));
     print("", 0, 0, 0, 240, 240, 240, 20, 180, 0, "medium", F("Pair New Device"));*/
-    SETTINGS_showList("NET", 100, 40);
+    SETTINGS_showList("NET", 90, 40);
 
     on_off_input("bt-switch", screen.getDisplayXSize() - 70, 110, bluetoothActive);
   }
@@ -3719,7 +3725,7 @@ void SETTINGS_START() {
     fillCircle("brightness-scroll", 255, 255, 255, X_length, 130, 10);
     drawCircle("brightness-scroll", 0, 0, 0, X_length, 130, 11);
 
-    SETTINGS_showList("DISP", 175, 50);
+    SETTINGS_showList("DISP", 165, 50);
 
     //print("", 0, 0, 0, 240, 240, 240, 20, 175, 0, "medium", F("Blue light filter:"));
     on_off_input("bluelight-filter-switch", screen.getDisplayXSize() - 70, 185, blueFilter);
@@ -3747,53 +3753,87 @@ void SETTINGS_START() {
     on_off_input("mute-switch", screen.getDisplayXSize() - 70, 110, !volume);
   }
 
+  if (SETTINGS_page == "Home") {
+    if (appPathArg.endsWith(".MCI") or appPathArg.endsWith(".MI2")){
+      deleteFile("S/D/HOMESCR.MI2");
+      deleteFile("S/D/HOMESCR.MCI");
+      byte buf[100];
+      File file;
+      File homeFile;
+      openFile(file, appPathArg, FILE_READ);
+      if (appPathArg.endsWith(".MI2")){
+        openFile(homeFile, "S/D/HOMESCR.MI2", FILE_WRITE);
+      }
+      else{
+        openFile(homeFile, "S/D/HOMESCR.MCI", FILE_WRITE);
+      }
+
+      while (file.available()){
+        byte len = file.read(buf, sizeof(buf));
+        homeFile.write(buf, len);
+      }
+      closeFile(homeFile);
+      closeFile(file);
+      clearString(appPathArg);
+    }
+
+    print("", 0, 0, 0, 240, 240, 240, 20, 30, 0, "large", F("<- Settings - Homescreen"));
+    SETTINGS_showList("Home", 90, 80);
+  }
+
 }
 
 
 void SETTINGS() {
   if (SETTINGS_page == "") {
+    byte pageIndex = SETTINGS_getMenuIndex(90, MENU_SPACING);
 
-    if (touchGetY() > 90 and touchGetY() < 130) {
+    if (pageIndex == 1) {
       scr_removeLayer("");
       SETTINGS_page = "About";
       SETTINGS_START();
     }
-    if (touchGetY() > 130 and touchGetY() < 170) {
+    else if (pageIndex == 2) {
       scr_removeLayer("");
       SETTINGS_page = "Device-Name";
       SETTINGS_START();
     }
-    if (touchGetY() > 170 and touchGetY() < 210) {
+    else if (pageIndex == 3) {
       scr_removeLayer("");
       SETTINGS_page = "Network";
       SETTINGS_START();
     }
-    if (touchGetY() > 210 and touchGetY() < 250) {
+    else if (pageIndex == 4) {
       scr_removeLayer("");
       SETTINGS_page = "Processes";
       SETTINGS_START();
     }
-    if (touchGetY() > 250 and touchGetY() < 290) {
+    else if (pageIndex == 5) {
       scr_removeLayer("");
       SETTINGS_page = "Time";
       SETTINGS_START();
     }
-    if (touchGetY() > 290 and touchGetY() < 330) {
+    else if (pageIndex == 6) {
       scr_removeLayer("");
       SETTINGS_page = "Display";
       SETTINGS_START();
     }
-    if (touchGetY() > 330 and touchGetY() < 370) {
+    else if (pageIndex == 7) {
       scr_removeLayer("");
       SETTINGS_page = "Sound";
       SETTINGS_START();
     }
-    if (touchGetY() > 370 and touchGetY() < 410) {
+    else if (pageIndex == 8) {
+      scr_removeLayer("");
+      SETTINGS_page = "Home";
+      SETTINGS_START();
+    }
+    else if (pageIndex == 9) {
       if (confirmation_message("Are you sure you want", F("to shut down your"), "device?")){
         shut_down();
       }
     }
-    if (touchGetY() > 410 and touchGetY() < 450) {
+    else if (pageIndex == 10) {
       factoryReset();
     }
   }
@@ -4414,44 +4454,60 @@ void SETTINGS() {
       addNotification("test", F("volume change test"));
     }
   }
+
+  if (SETTINGS_page == "Home") {
+    if (touchGetX() < 52 and touchGetY() < 60 and touch.dataAvailable()) { // press back button
+      clearString(SETTINGS_page);
+      scr_removeLayer("");
+      SETTINGS_START();
+    }
+    
+    byte pageIndex = SETTINGS_getMenuIndex(90, 80);
+    if (pageIndex == 1){
+      deleteFile("S/D/HOMESCR.MI2");
+      deleteFile("S/D/HOMESCR.MCI");
+    }
+    else if (pageIndex == 2){
+      // new from system default photos
+      allowedExt = ".MI2.MCI";
+      appPathArg = "S/D/R/HS/";
+      set_app("FILES");
+    }
+    else if (pageIndex == 3){
+      // new from user filesystem
+      allowedExt = ".MI2.MCI";
+      appPathArg = "";
+      set_app("FILES");
+    }
+  }
 }
 
 
 void SETTINGS_showList(String path, unsigned int y, byte sep){
   path = "S/D/R/SP/" + path + ".MRT";
 
-  drawLine("", 100, 100, 100, 0, y-sep/4, screen.getDisplayXSize(), y-sep/4);
+  drawLine("", 100, 100, 100, 0, y, screen.getDisplayXSize(), y);
   File file;
   openFile(file, path, FILE_READ);
   while (file.available()){
     String text = file.readStringUntil('\n');
 
-    print("", 0, 0, 0, 240, 240, 240, 20, y, 0, "medium", text);
-    drawLine("", 100, 100, 100, 0, y+sep*3/4, screen.getDisplayXSize(), y+sep*3/4);
+    print("", 0, 0, 0, 240, 240, 240, 20, y + sep/2 - 8, 0, "medium", text);
+    drawLine("", 100, 100, 100, 0, y+sep, screen.getDisplayXSize(), y+sep);
     y += sep;
-
-
-
-    /*print("", 0, 0, 0, 240, 240, 240, 20, 30, 0, "large", "Settings");
-    print("", 0, 0, 0, 240, 240, 240, 20, 100, 0, "medium", "About");
-    print("", 0, 0, 0, 240, 240, 240, 20, 140, 0, "medium", "Device Name");
-    print("", 0, 0, 0, 240, 240, 240, 20, 180, 0, "medium", "Network");
-    print("", 0, 0, 0, 240, 240, 240, 20, 220, 0, "medium", "Processes");
-    print("", 0, 0, 0, 240, 240, 240, 20, 260, 0, "medium", "Time");
-    print("", 0, 0, 0, 240, 240, 240, 20, 300, 0, "medium", "Display Options");
-    print("", 0, 0, 0, 240, 240, 240, 20, 340, 0, "medium", "Sound");
-    print("", 0, 0, 0, 240, 240, 240, 20, 380, 0, "medium", "Shut Down");
-    print("", 0, 0, 0, 240, 240, 240, 20, 420, 0, "medium", "Factory Reset");
-
-    drawLine("", 100, 100, 100, 0, 90, screen.getDisplayXSize(), 90);
-    drawLine("", 100, 100, 100, 0, 130, screen.getDisplayXSize(), 130);
-    drawLine("", 100, 100, 100, 0, 170, screen.getDisplayXSize(), 170);
-    drawLine("", 100, 100, 100, 0, 210, screen.getDisplayXSize(), 210);
-    drawLine("", 100, 100, 100, 0, 250, screen.getDisplayXSize(), 250);
-    drawLine("", 100, 100, 100, 0, 290, screen.getDisplayXSize(), 290);*/
 
   }
   closeFile(file);
+}
+
+byte SETTINGS_getMenuIndex(unsigned int y, byte sep){
+  for (byte i=1; i<50; i++){
+    if (touchGetY() > y + (i-1)*sep and touchGetY() < y + i*sep) {
+      return i;
+    }
+  }
+
+  return 0; // did not click in menu
 }
 
 
@@ -4473,7 +4529,7 @@ void SETTINGS_QUIT(){
 
 String FILES_selected = "";
 unsigned int FILES_lastYPos = 0;
-#define FILES_ROOT "F/"
+#define FILES_ROOT ""
 
 void FILES_START() {
   scr_removeLayer("");
@@ -4499,7 +4555,7 @@ void FILES_START() {
   openFile(dir, FILES_ROOT + appPathArg, FILE_READ);
 
   print("head", 0, 0, 0, 255, 255, 255, CENTER, 20, 0, "large", "Files");
-  print("head", 0, 0, 0, 255, 255, 255, 10, 55, 0, "small", "/" + appPathArg);
+  print("head", 0, 0, 0, 255, 255, 255, 10, 55, 0, "small", appPathArg);
 
   if (appPathArg != "") {
     fillRoundRect("head", 20, 30, 255, 20, 70, screen.getDisplayXSize()/2 - 10, 135);
