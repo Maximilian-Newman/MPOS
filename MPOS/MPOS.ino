@@ -2153,6 +2153,12 @@ bool bluetoothInAT = false;
 bool bluetoothIsMaster = false;
 bool bluetoothScanning = false;
 String BLUETOOTH_MAC_ADDRESS = "";
+String bluetoothServices = "";
+String BTConnectedMAC = "";
+unsigned long BTConnectTime = 0;
+unsigned long BTLastPing = 0;
+unsigned long BTLastPingSent = 0;
+String BTSendBuffer = "";
 
 String format_MAC(String unformatted) {
   String mac = "";
@@ -2316,12 +2322,6 @@ void bluetooth_stop_scan() {
   }
 }
 
-String BTConnectedMAC = "";
-unsigned long BTConnectTime = 0;
-unsigned long BTLastPing = 0;
-unsigned long BTLastPingSent = 0;
-String BTSendBuffer = "";
-
 void bluetooth_transmit_packet(String data, String destinationMac = ""){
   if (bluetoothActive){
     bluetooth_stop_scan();
@@ -2358,6 +2358,29 @@ void bluetooth_connect(String targetMac){
   BTConnectTime = millis();
   refreshScreen();
   CONTROLLING_APP = prev_control_app;
+  bluetooth_transmit_packet("TYPE\n", targetMac);
+}
+
+
+
+
+
+
+// external bluetooth display control
+
+void MCTV_clear() {
+  if (bluetoothServices.indexOf("TV") >= 0){
+    bluetooth_transmit_packet("TV.CLEAR\n");
+  }
+}
+
+void MCTV_line(int x1, int y1, int x2, int y2, byte c) {
+  // c = 0 -> black
+  // c = 1 -> white
+  // c = 2 -> invert
+  if (bluetoothServices.indexOf("TV") >= 0){
+    bluetooth_transmit_packet("TV.LINE\n" + String(x1) + "," + String(y1) + "," + String(x2) + "," + String(y1) + "," + String(y2));
+  }
 }
 
 
@@ -6379,6 +6402,11 @@ void loop() {
       file.print(BTConnectedMAC + "\t" + BTRecieved + "\n");
       closeFile(file);
       Serial.println("bluetooth name set: " + BTRecieved);
+    }
+
+    else if (BTRecieved.startsWith("TYPE:") and BTConnectedMAC != "") {
+      BTRecieved.remove(0, 5);
+      bluetoothServices = BTRecieved;
     }
   }
 
