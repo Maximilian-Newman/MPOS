@@ -1,3 +1,27 @@
+/*
+Copyright (c) 2025 Maximilian Newman Loussouarn
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
+
+
+
 String CURRENT_VERSION = "2.5 BETA";
 
 
@@ -2229,6 +2253,9 @@ void bluetooth_power_off(){
   digitalWrite(A13, LOW);
   bluetoothActive = false;
   bluetoothScanning = false;
+  clearString(BTConnectedMAC);
+  clearString(bluetoothServices);
+  clearString(BTSendBuffer);
 }
 
 void bluetooth_enter_AT(){
@@ -2329,7 +2356,7 @@ void bluetooth_transmit_packet(String data, String destinationMac = ""){
     if (BTLastPing > BTConnectTime and millis() - BTLastPing < 30000) {
       Serial1.print(data);
     }
-    else if (millis() - BTConnectTime < 10000) { // wait for connection to take place before sending
+    else if (BTConnectedMAC != "") { // wait for connection to take place before sending
       BTSendBuffer += data;
     }
   }
@@ -2353,12 +2380,12 @@ void bluetooth_connect(String targetMac){
   delay(200);
   bluetooth_exit_AT();
   delay(1000);
-  bluetooth_transmit_packet("CONNECT\n" + BLUETOOTH_MAC_ADDRESS, targetMac);
-  BTConnectedMAC = targetMac;
   BTConnectTime = millis();
+  BTConnectedMAC = targetMac;
+  bluetooth_transmit_packet("CONNECT\n" + BLUETOOTH_MAC_ADDRESS + "\n", targetMac);
+  bluetooth_transmit_packet("TYPE\n", targetMac);
   refreshScreen();
   CONTROLLING_APP = prev_control_app;
-  bluetooth_transmit_packet("TYPE\n", targetMac);
 }
 
 
@@ -2369,16 +2396,18 @@ void bluetooth_connect(String targetMac){
 // external bluetooth display control
 
 void MCTV_clear() {
-  if (bluetoothServices.indexOf("TV") >= 0){
-    bluetooth_transmit_packet("TV.CLEAR\n");
+  if (bluetoothServices.indexOf(",TV,") >= 0){
+    bluetooth_transmit_packet(F("TV.CLEAR\n"));
   }
 }
 
+
+// c = 0 -> black
+// c = 1 -> white
+// c = 2 -> invert
+
 void MCTV_line(int x1, int y1, int x2, int y2, byte c) {
-  // c = 0 -> black
-  // c = 1 -> white
-  // c = 2 -> invert
-  if (bluetoothServices.indexOf("TV") >= 0){
+  if (bluetoothServices.indexOf(",TV,") >= 0){
     bluetooth_transmit_packet("TV.LINE\n" + String(x1) + "," + String(y1) + "," + String(x2) + "," + String(y1) + "," + String(y2));
   }
 }
@@ -3021,18 +3050,23 @@ void showTopBar() {
   drawLine("top-bar", color, color, color, 0, 14, screen.getDisplayXSize(), 14);
   print("top-bar", color, color, color, b_color, b_color, b_color, 1, 1, 0, "small", getTimeString());
 
-  byte iconPosition = 0;
+  unsigned int iconPosition = 0;
 
   //if (wifi_connected) {
-  //  showBIM("wifi-icon", "S/D/R/WIFION.BIM", screen.getDisplayXSize() - 20 - iconPosition, 0, 1, 1, b_color, b_color, b_color, color, color, color);
   //  iconPosition += 20;
+  //  showBIM("wifi-icon", "S/D/R/WIFION.BIM", screen.getDisplayXSize() - 20 - iconPosition, 0, 1, 1, b_color, b_color, b_color, color, color, color);
   //}
 
   topBarShowsBluetooth = false;
-  if (millis() - BTLastPing < 10000) {
-    showBIM("top-bar", "S/D/R/BTON.BIM", screen.getDisplayXSize() - 10 - iconPosition, 0, 1, 1, b_color, b_color, b_color, color, color, color);
+  if (BTConnectedMAC != "" and millis() - BTLastPing < 10000) {
     iconPosition += 10;
+    showBIM("top-bar", "S/D/R/BTON.BIM", screen.getDisplayXSize() - iconPosition, 0, 1, 1, b_color, b_color, b_color, color, color, color);
     topBarShowsBluetooth = true;
+  }
+
+  if (bluetoothServices.indexOf(",TV,") >= 0) {
+    iconPosition += 20;
+    showBIM("top-bar", "S/D/R/MCTV.BIM", screen.getDisplayXSize() - iconPosition, 0, 1, 1, b_color, b_color, b_color, color, color, color);
   }
 
   refreshScreen(true);
@@ -6393,6 +6427,15 @@ void loop() {
       if (!topBarShowsBluetooth) {showTopBar();}
     }
 
+    else if (BTRecieved == "DISCONNECT") {
+      clearString(BTConnectedMAC);
+      clearString(bluetoothServices);
+      clearString(BTSendBuffer);
+      BTLastPing = 0;
+      while (Serial1.available()) {Serial1.read();}
+      showTopBar();
+    }
+
     else if (BTRecieved.startsWith("NAME:") and BTConnectedMAC != "") {
       BTRecieved.remove(0, 5);
       BTRecieved.replace('\t', ' ');
@@ -6407,6 +6450,7 @@ void loop() {
     else if (BTRecieved.startsWith("TYPE:") and BTConnectedMAC != "") {
       BTRecieved.remove(0, 5);
       bluetoothServices = BTRecieved;
+      showTopBar();
     }
   }
 
