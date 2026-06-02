@@ -1175,7 +1175,6 @@ void showBIM(String LABEL, String location, int startX, int startY, int scaleX, 
 
   if (LOG) {
     openFile(graphFile, "S/SCREEN.MLI", FILE_WRITE);
-    //addFileToList(&graphFile);
     graphFile.seek(graphFile.size());
 
     graphFile.print(CONTROLLING_APP + "_" + LABEL + ":BIM,");
@@ -1235,14 +1234,15 @@ void showBIM(String LABEL, String location, int startX, int startY, int scaleX, 
       screen.fillRect(currentWidth * scaleX + startX, currentHeight * scaleY + startY, currentWidth * scaleX + startX + scaleX, currentHeight * scaleY + startY + scaleY);
       currentWidth += 1;
 
-    //  if (bluetoothServices.indexOf(",TV,") >= 0 and mctvMirrorMode) {
-    //    if (color == 1 and !invertForMCTV or color == 0 and invertForMCTV) {
-    //      MCTV_fillRect(currentWidth * scaleX + startX, currentHeight * scaleY + startY, currentWidth * scaleX + startX + scaleX, currentHeight * scaleY + startY + scaleY, 1);
-    //    }
-    //    else {
-    //      MCTV_fillRect(currentWidth * scaleX + startX, currentHeight * scaleY + startY, currentWidth * scaleX + startX + scaleX, currentHeight * scaleY + startY + scaleY, 0);
-    //    }
-    //  }
+      // extremely slow, need to create dedicated MCTV .bim instruction
+      /*if (bluetoothServices.indexOf(",TV,") >= 0 and mctvMirrorMode) {
+        if (color == 1 and !invertForMCTV or color == 0 and invertForMCTV) {
+          MCTV_fillRect(currentWidth * scaleX + startX, currentHeight * scaleY + startY, currentWidth * scaleX + startX + scaleX, currentHeight * scaleY + startY + scaleY, 1);
+        }
+        else {
+          MCTV_fillRect(currentWidth * scaleX + startX, currentHeight * scaleY + startY, currentWidth * scaleX + startX + scaleX, currentHeight * scaleY + startY + scaleY, 0);
+        }
+      }*/
     }
     currentHeight += 1;
     currentWidth = 0;
@@ -1794,13 +1794,15 @@ void fileRemovePart(String path, unsigned long startPos, unsigned long endPos) {
     deleteFile("S/TEMP.MRT");
     File tempFile;
     openFile(tempFile, "S/TEMP.MRT", FILE_WRITE);
-    for (unsigned long i=0; i<endPos; i++) {file.read();}
+    unsigned long i=0;
+
     while (file.available()) {
       String fragment = "";
       for (byte j=0; j<100; j++) {
         if (file.available()) {
           char c = file.read();
-          fragment += c;
+          if (i < startPos or i > endPos) {fragment += c;}
+          i += 1;
         }
         else {break;}
       }
@@ -1809,9 +1811,9 @@ void fileRemovePart(String path, unsigned long startPos, unsigned long endPos) {
 
     closeFile(file);
     closeFile(tempFile);
+    deleteFile(path);
     openFile(file, path, FILE_WRITE);
     openFile(tempFile, "S/TEMP.MRT", FILE_READ);
-    for (unsigned long i=0; i<startPos; i++) {file.read();}
     while (tempFile.available()) {
       String fragment = "";
       for (byte j=0; j<100; j++) {
@@ -1825,12 +1827,13 @@ void fileRemovePart(String path, unsigned long startPos, unsigned long endPos) {
     }
     closeFile(file);
     closeFile(tempFile);
+    deleteFile("S/TEMP.MRT");
   }
 }
 
 void fileRemoveLineStartingWith(String path, String startToRemove) {
 
-  deleteFile("S/T_DEL.MRT");
+  deleteFile("S/TEMP.MRT");
 
   File file;
   openFile(file, path, FILE_READ);
@@ -1845,7 +1848,7 @@ void fileRemoveLineStartingWith(String path, String startToRemove) {
   }
 
   File temporaryFile;
-  openFile(temporaryFile, "S/T_DEL.MRT", FILE_WRITE);
+  openFile(temporaryFile, "S/TEMP.MRT", FILE_WRITE);
 
   while (file.available()) {
     String line = file.readStringUntil('\n');
@@ -1858,7 +1861,7 @@ void fileRemoveLineStartingWith(String path, String startToRemove) {
 
   // copy new version from temporary file to permanent file
   deleteFile(path);
-  openFile(temporaryFile, "S/T_DEL.MRT", FILE_READ);
+  openFile(temporaryFile, "S/TEMP.MRT", FILE_READ);
   openFile(file, path, FILE_WRITE);
 
   while (temporaryFile.available()) {
@@ -1869,7 +1872,7 @@ void fileRemoveLineStartingWith(String path, String startToRemove) {
 
   closeFile(file);
   closeFile(temporaryFile);
-  deleteFile("S/T_DEL.MRT");
+  deleteFile("S/TEMP.MRT");
 }
 
 
@@ -2469,7 +2472,7 @@ void bluetooth_transmit_packet(String data, bool ignoreOrder = false){
         Serial.println(data);
       }
     }
-    else if (fileExists("S/BT/SBUF.MRT")) {
+    else if (fileExists("S/BT/SBUF.MRT") or freeMemory() < 900 or BTConnectedMAC.length() > 600) {
       File file;
       openFile(file, "S/BT/SBUF.MRT", FILE_WRITE);
       file.print(data + "\r");
@@ -2477,14 +2480,6 @@ void bluetooth_transmit_packet(String data, bool ignoreOrder = false){
     }
     else if (BTConnectedMAC != "") { // wait for connection to take place before sending
       BTSendBuffer += data + "\r"; // source of memory leak, will replace with file buffer later
-      if (BTSendBuffer.length() > 700 or freeMemory() < 800) {
-        File file;
-        openFile(file, "S/BT/SBUF.MRT", FILE_WRITE);
-        file.print(data);
-        file.print(BTSendBuffer);
-        closeFile(file);
-        clearString(BTSendBuffer);
-      }
     }
   }
 }
@@ -3475,7 +3470,7 @@ void handle_jmp(){
     screen.print("Control APP:", 0, 380);
     screen.print(CONTROLLING_APP, 250, 380);
     screen.print("Free RAM:", 0, 410);
-    screen.print(String(freeMemory()) + "bytes", 250, 410);
+    screen.print(String(freeMemory()) + " bytes", 250, 410);
     delay(5000);
 
     CONTROLLING_APP = "SYS";
@@ -6154,9 +6149,6 @@ void setup() {
 
 
 
-
-
-
   initScreen(PORTRAIT);
 
   if (!SD.begin(53)) {
@@ -6185,6 +6177,30 @@ void setup() {
     digitalWrite(powerPin, LOW);
     while (true);
   }
+
+
+
+  // test fileRemovePart()
+
+  deleteFile("test.txt");
+  File file;
+  openFile(file, "test.txt", FILE_WRITE);
+  file.print("0123456789abcdefghijklmnopqrstuvwxyz");
+  closeFile(file);
+
+  openFile(file, "test.txt", FILE_READ);
+  Serial.println(file.readString());
+  closeFile(file);
+
+  fileRemovePart("test.txt", 2, 5);
+
+  openFile(file, "test.txt", FILE_READ);
+  Serial.println(file.readString());
+  closeFile(file);
+
+  deleteFile("test.txt");
+
+  // end of test
 
 
 
@@ -6264,8 +6280,6 @@ void setup() {
   deleteFile("S/BT/NEARBY.MRT");
   deleteFile("S/RECOV.MRT");
   deleteFile("S/BT/SBUF.MRT");
-
-  //SD.remove("S/BT/SAVE.MRT"); // temporary line
 
   openFile(setFile, "S/SCREEN.MLI", FILE_WRITE);
   closeFile(setFile);
@@ -6653,23 +6667,30 @@ void loop() {
     if (BTSendBuffer == "" or i == -1) {clearString(BTSendBuffer);}
   }
 
-  if (fileExists("S/BT/SBUF.MRT") and millis() - BTLastPing < 8000 and BTLockedUntil < millis()) {
+  if (fileExists("S/BT/SBUF.MRT") and BTSendBuffer == "") {
     File file;
     openFile(file, "S/BT/SBUF.MRT", FILE_READ);
-    String packet = file.readStringUntil('\r');
 
-    if (file.available()) {
+    while (file.available() and freeMemory() > 900 and BTSendBuffer.length() < 1000) {
+      BTSendBuffer += file.readStringUntil('\r') + "\r";
+    }
+    Serial.println("Pulled from file cache:");
+    Serial.println(BTSendBuffer);
+
+    Serial.print("file buffer size: ");
+    Serial.println(file.size());
+
+    if (file.available() and file.size() < 5000) {
       closeFile(file);
-      fileRemovePart("S/BT/SBUF.MRT", 0, packet.length() + 1);
+      fileRemovePart("S/BT/SBUF.MRT", 0, BTSendBuffer.length() + 1);
     }
     else {
+      if (file.available()) {
+        Serial.println("Clearing overloaded buffer");
+      }
       closeFile(file);
       deleteFile("S/BT/SBUF.MRT");
     }
-
-    Serial.print("BT file catch up: ");
-    Serial.println(packet);
-    bluetooth_transmit_packet(packet, true);
   }
 
 
