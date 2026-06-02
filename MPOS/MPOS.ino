@@ -289,7 +289,7 @@ unsigned long BTLastPing = 0;
 unsigned long BTLastPingSent = 0;
 String BTSendBuffer = "";
 unsigned long BTLockedUntil = 0;
-void bluetooth_transmit_packet(String data, String destinationMac = "");
+void bluetooth_transmit_packet(String data, bool ignoreOrder = false);
 
 
 String CURRENT_APP = "";
@@ -1788,6 +1788,46 @@ void fileInsertStart(String path, String insert, unsigned int numLoops, byte lin
   }
 }
 
+void fileRemovePart(String path, unsigned long startPos, unsigned long endPos) {
+  File file;
+  if (openFile(file, path, FILE_READ)){
+    deleteFile("S/TEMP.MRT");
+    File tempFile;
+    openFile(tempFile, "S/TEMP.MRT", FILE_WRITE);
+    for (unsigned long i=0; i<endPos; i++) {file.read();}
+    while (file.available()) {
+      String fragment = "";
+      for (byte j=0; j<100; j++) {
+        if (file.available()) {
+          char c = file.read();
+          fragment += c;
+        }
+        else {break;}
+      }
+      tempFile.print(fragment);
+    }
+
+    closeFile(file);
+    closeFile(tempFile);
+    openFile(file, path, FILE_WRITE);
+    openFile(tempFile, "S/TEMP.MRT", FILE_READ);
+    for (unsigned long i=0; i<startPos; i++) {file.read();}
+    while (tempFile.available()) {
+      String fragment = "";
+      for (byte j=0; j<100; j++) {
+        if (tempFile.available()) {
+          char c = tempFile.read();
+          fragment += c;
+        }
+        else {break;}
+      }
+      file.print(fragment);
+    }
+    closeFile(file);
+    closeFile(tempFile);
+  }
+}
+
 void fileRemoveLineStartingWith(String path, String startToRemove) {
 
   deleteFile("S/T_DEL.MRT");
@@ -2416,16 +2456,35 @@ void bluetooth_stop_scan() {
   }
 }
 
-void bluetooth_transmit_packet(String data, String destinationMac = ""){
+void bluetooth_transmit_packet(String data, bool ignoreOrder = false){
   if (bluetoothActive){
     bluetooth_stop_scan();
     bluetooth_exit_AT();
-    if (BTLastPing > BTConnectTime and millis() - BTLastPing < 30000 and millis() > BTLockedUntil) {
+    if (BTLastPing > BTConnectTime and millis() - BTLastPing < 30000 and millis() > BTLockedUntil and ((BTSendBuffer == "" and !fileExists("S/BT/SBUF.MRT")) or ignoreOrder)) {
       Serial1.print(data);
       BTLockedUntil = millis() + 600;
+
+      if (!ignoreOrder){
+        Serial.print("BT instant send: ");
+        Serial.println(data);
+      }
+    }
+    else if (fileExists("S/BT/SBUF.MRT")) {
+      File file;
+      openFile(file, "S/BT/SBUF.MRT", FILE_WRITE);
+      file.print(data + "\r");
+      closeFile(file);
     }
     else if (BTConnectedMAC != "") { // wait for connection to take place before sending
       BTSendBuffer += data + "\r"; // source of memory leak, will replace with file buffer later
+      if (BTSendBuffer.length() > 700 or freeMemory() < 800) {
+        File file;
+        openFile(file, "S/BT/SBUF.MRT", FILE_WRITE);
+        file.print(data);
+        file.print(BTSendBuffer);
+        closeFile(file);
+        clearString(BTSendBuffer);
+      }
     }
   }
 }
@@ -3416,7 +3475,7 @@ void handle_jmp(){
     screen.print("Control APP:", 0, 380);
     screen.print(CONTROLLING_APP, 250, 380);
     screen.print("Free RAM:", 0, 410);
-    screen.print(String(freeMemory() + "bytes"), 250, 410);
+    screen.print(String(freeMemory()) + "bytes", 250, 410);
     delay(5000);
 
     CONTROLLING_APP = "SYS";
@@ -6204,6 +6263,7 @@ void setup() {
   deleteFile("S/LOAD.MRT");
   deleteFile("S/BT/NEARBY.MRT");
   deleteFile("S/RECOV.MRT");
+  deleteFile("S/BT/SBUF.MRT");
 
   //SD.remove("S/BT/SAVE.MRT"); // temporary line
 
@@ -6544,17 +6604,6 @@ void loop() {
 
     else if (BTRecieved == "PING") {
       BTLastPing = millis();
-      /*clearString(BTSendBuffer);
-
-      byte timeoutCounter = 0;
-      while (timeoutCounter < 100 and !Serial1.available()){
-        timeoutCounter += 1;
-        delay(1);
-      }
-      Serial1.read();
-      Serial.print("counter end: ");
-      Serial.println(timeoutCounter);*/
-
       if (!topBarShowsBluetooth) {showTopBar();}
     }
 
@@ -6562,6 +6611,7 @@ void loop() {
       clearString(BTConnectedMAC);
       clearString(bluetoothServices);
       clearString(BTSendBuffer);
+      deleteFile("S/BT/SBUF.MRT");
       BTLastPing = 0;
       while (Serial1.available()) {Serial1.read();}
       showTopBar();
@@ -6596,11 +6646,30 @@ void loop() {
   if (BTSendBuffer != "" and millis() - BTLastPing < 8000 and BTLockedUntil < millis()) {
     unsigned int i = BTSendBuffer.indexOf('\r');
     String packet = BTSendBuffer.substring(0, i);
-    Serial.print("catch up: ");
+    Serial.print("BT RAM catch up: ");
     Serial.println(packet);
     BTSendBuffer.remove(0, i+1);
-    bluetooth_transmit_packet(packet);
+    bluetooth_transmit_packet(packet, true);
     if (BTSendBuffer == "" or i == -1) {clearString(BTSendBuffer);}
+  }
+
+  if (fileExists("S/BT/SBUF.MRT") and millis() - BTLastPing < 8000 and BTLockedUntil < millis()) {
+    File file;
+    openFile(file, "S/BT/SBUF.MRT", FILE_READ);
+    String packet = file.readStringUntil('\r');
+
+    if (file.available()) {
+      closeFile(file);
+      fileRemovePart("S/BT/SBUF.MRT", 0, packet.length() + 1);
+    }
+    else {
+      closeFile(file);
+      deleteFile("S/BT/SBUF.MRT");
+    }
+
+    Serial.print("BT file catch up: ");
+    Serial.println(packet);
+    bluetooth_transmit_packet(packet, true);
   }
 
 
@@ -6614,6 +6683,7 @@ void loop() {
     clearString(BTConnectedMAC);
     clearString(bluetoothServices);
     clearString(BTSendBuffer);
+    deleteFile("S/BT/SBUF.MRT");
     BTLastPing = 0;
   }
 
