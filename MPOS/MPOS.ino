@@ -288,6 +288,7 @@ unsigned long BTConnectTime = 0;
 unsigned long BTLastPing = 0;
 unsigned long BTLastPingSent = 0;
 String BTSendBuffer = "";
+unsigned long BTLockedUntil = 0;
 void bluetooth_transmit_packet(String data, String destinationMac = "");
 
 
@@ -783,14 +784,14 @@ void setFont(String fontName) {
   else if (fontName == "medium" or fontName == "2") {
     screen.setFont(BigFont);
   }
-  else if (fontName == "giant" or fontName == "3") {
-    screen.setFont(segment18_XXL);
-  }
-  else if (fontName == "large" or fontName == "4") {
+  else if (fontName == "large" or fontName == "3") {
     screen.setFont(Grotesk16x32);
   }
-  else if (fontName == "xlarge" or fontName == "5") {
+  else if (fontName == "xlarge" or fontName == "4") {
     screen.setFont(Grotesk24x48);
+  }
+  else if (fontName == "giant" or fontName == "5") {
+    screen.setFont(segment18_XXL);
   }
 
   else {
@@ -1688,7 +1689,10 @@ void print(String LABEL, byte r, byte g, byte b, byte b_r, byte b_g, byte b_b, i
 
 
   if (bluetoothServices.indexOf(",TV,") >= 0 and mctvMirrorMode) {
-    MCTV_print(x, y, 1, text);
+    byte mctvFont = 1;
+    if (fontName == "xlarge" or fontName == "4") {mctvFont = 2;}
+    if (fontName == "giant" or fontName == "5") {mctvFont = 4;}
+    MCTV_print(x, y, mctvFont, text);
   }
 }
 
@@ -2416,20 +2420,9 @@ void bluetooth_transmit_packet(String data, String destinationMac = ""){
   if (bluetoothActive){
     bluetooth_stop_scan();
     bluetooth_exit_AT();
-    if (BTLastPing > BTConnectTime and millis() - BTLastPing < 30000) {
-      while(Serial1.available()) {Serial1.read();}
+    if (BTLastPing > BTConnectTime and millis() - BTLastPing < 30000 and millis() > BTLockedUntil) {
       Serial1.print(data);
-
-      // wait for reception confirmation to avoid spamming
-      unsigned int timeoutCounter = 0;
-      while (timeoutCounter < 500 and !Serial1.available()){
-        timeoutCounter += 1;
-        delay(1);
-      }
-      Serial1.read();
-      Serial.print("counter end: ");
-      Serial.println(timeoutCounter);
-
+      BTLockedUntil = millis() + 600;
     }
     else if (BTConnectedMAC != "") { // wait for connection to take place before sending
       BTSendBuffer += data + "\r"; // source of memory leak, will replace with file buffer later
@@ -2506,7 +2499,7 @@ void MCTV_2_coord_instruct(String instruct, int x1, int y1, int x2, int y2, int 
 
 void MCTV_line(int x1, int y1, int x2, int y2, byte c) {
   if (bluetoothServices.indexOf(",TV,") >= 0){
-    MCTV_2_coord_instruct("LINE", x1, y1, x2, y1, c);
+    MCTV_2_coord_instruct("LINE", x1, y1, x2, y2, c);
   }
 }
 
@@ -2539,7 +2532,7 @@ unsigned long lastNotification = 0;
 
 
 
-bool addNotification(String title, String description) {
+void addNotification(String title, String description) {
   description.replace("\n", "");
   File file;
   openFile(file, "S/NOTIF.MRT", FILE_WRITE);
@@ -3417,13 +3410,13 @@ void handle_jmp(){
     screen.setFont(Grotesk24x48);
     screen.print("ERROR", 100, 100);
     screen.setFont(BigFont);
-    screen.print(F("Unrecoverable System Crash"), 0, 300);
+    screen.print(F("Irrecoverable System Crash"), 0, 300);
     screen.print("Current APP:", 0, 350);
     screen.print(CURRENT_APP, 250, 350);
     screen.print("Control APP:", 0, 380);
     screen.print(CONTROLLING_APP, 250, 380);
     screen.print("Free RAM:", 0, 410);
-    screen.print(String(freeMemory()), 250, 410);
+    screen.print(String(freeMemory() + "bytes"), 250, 410);
     delay(5000);
 
     CONTROLLING_APP = "SYS";
@@ -3845,7 +3838,7 @@ void SETTINGS_START() {
       addNotification("Missing File", F("The root file '/S/SETTINGS/BACKGRD.MRT' was not found."));
     }
 
-    Serial.println(backAllow);
+    //Serial.println(backAllow);
 
     print("", 0, 0, 0, 240, 240, 240, 20, 195, 0, "medium", "SYSTEM");
     bool allow = false;
@@ -6530,6 +6523,7 @@ void loop() {
 
   if (Serial1.available()){
     String BTRecieved = Serial1.readStringUntil('\n');
+    Serial.print("Bluetooth recieved: ");
     Serial.println(BTRecieved);
 
 
@@ -6550,8 +6544,6 @@ void loop() {
 
     else if (BTRecieved == "PING") {
       BTLastPing = millis();
-      Serial1.print(BTSendBuffer);
-      Serial.print(BTSendBuffer);
       /*clearString(BTSendBuffer);
 
       byte timeoutCounter = 0;
@@ -6573,6 +6565,7 @@ void loop() {
       BTLastPing = 0;
       while (Serial1.available()) {Serial1.read();}
       showTopBar();
+      addNotification("Bluetooth Disconnected", "The device you were connected to kicked you");
     }
 
     else if (BTRecieved.startsWith("NAME:") and BTConnectedMAC != "") {
@@ -6591,19 +6584,23 @@ void loop() {
       bluetoothServices = BTRecieved;
       showTopBar();
     }
+
+    else if (BTRecieved == "1") {
+      BTLockedUntil = 0;
+    }
   }
 
 
 
 
-  if (BTSendBuffer != "" and millis() - BTLastPing < 8000) {
+  if (BTSendBuffer != "" and millis() - BTLastPing < 8000 and BTLockedUntil < millis()) {
     unsigned int i = BTSendBuffer.indexOf('\r');
     String packet = BTSendBuffer.substring(0, i);
     Serial.print("catch up: ");
     Serial.println(packet);
     BTSendBuffer.remove(0, i+1);
     bluetooth_transmit_packet(packet);
-    if (BTSendBuffer == "") {clearString(BTSendBuffer);}
+    if (BTSendBuffer == "" or i == -1) {clearString(BTSendBuffer);}
   }
 
 
