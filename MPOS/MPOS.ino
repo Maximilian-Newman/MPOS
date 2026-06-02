@@ -37,6 +37,8 @@ String deviceName = "My MaxPhone 2";
 bool keyboardVisible = false;
 bool darkMode = false;
 bool bluetoothActive = false;
+bool mctvMirrorMode = true;
+unsigned int mctvThreshBrightness = 300;
 
 
 
@@ -274,6 +276,19 @@ byte currentSampleLoopPasses = 0;
 unsigned long SYS_RAMSampleTime = 0;
 unsigned long SYS_loadSampleTime = 0;
 unsigned long SYS_nextLoadSampleTime = 0;
+
+
+bool bluetoothInAT = false;
+bool bluetoothIsMaster = false;
+bool bluetoothScanning = false;
+String BLUETOOTH_MAC_ADDRESS = "";
+String bluetoothServices = "";
+String BTConnectedMAC = "";
+unsigned long BTConnectTime = 0;
+unsigned long BTLastPing = 0;
+unsigned long BTLastPingSent = 0;
+String BTSendBuffer = "";
+void bluetooth_transmit_packet(String data, String destinationMac = "");
 
 
 String CURRENT_APP = "";
@@ -1190,6 +1205,9 @@ void showBIM(String LABEL, String location, int startX, int startY, int scaleX, 
     delay(10);
   }
 
+  bool invertForMCTV = false;
+  if (backR + backG + backB > frontR + frontG + frontB) {invertForMCTV = true;}
+
 
   openFile(graphFile, location, FILE_READ);
   graphFile.seek(0);
@@ -1215,6 +1233,15 @@ void showBIM(String LABEL, String location, int startX, int startY, int scaleX, 
 
       screen.fillRect(currentWidth * scaleX + startX, currentHeight * scaleY + startY, currentWidth * scaleX + startX + scaleX, currentHeight * scaleY + startY + scaleY);
       currentWidth += 1;
+
+    //  if (bluetoothServices.indexOf(",TV,") >= 0 and mctvMirrorMode) {
+    //    if (color == 1 and !invertForMCTV or color == 0 and invertForMCTV) {
+    //      MCTV_fillRect(currentWidth * scaleX + startX, currentHeight * scaleY + startY, currentWidth * scaleX + startX + scaleX, currentHeight * scaleY + startY + scaleY, 1);
+    //    }
+    //    else {
+    //      MCTV_fillRect(currentWidth * scaleX + startX, currentHeight * scaleY + startY, currentWidth * scaleX + startX + scaleX, currentHeight * scaleY + startY + scaleY, 0);
+    //    }
+    //  }
     }
     currentHeight += 1;
     currentWidth = 0;
@@ -1265,6 +1292,11 @@ void fillScr(byte r, byte g, byte b) {
   }
 
   screen.fillScr(r, g, b);
+
+  if (bluetoothServices.indexOf(",TV,") >= 0 and mctvMirrorMode) {
+    if (r + g + b > mctvThreshBrightness) {MCTV_clear(1);}
+    else {MCTV_clear(0);}
+  }
 }
 
 void setColor(byte r, byte g, byte b) {
@@ -1392,6 +1424,12 @@ void drawPixel(String LABEL, byte r, byte g, byte b, int x, int y) {
   screen.drawPixel(x, y);
 
   delay(10);
+
+
+  if (bluetoothServices.indexOf(",TV,") >= 0 and mctvMirrorMode) {
+    if (r + g + b > mctvThreshBrightness) {MCTV_pixel(x, y, 1);}
+    else {MCTV_pixel(x, y, 0);}
+  }
 }
 
 void drawLine(String LABEL, byte r, byte g, byte b, int x1, int y1, int x2, int y2) {
@@ -1420,6 +1458,12 @@ void drawLine(String LABEL, byte r, byte g, byte b, int x1, int y1, int x2, int 
   screen.drawLine(x1, y1, x2, y2);
 
   delay(10);
+
+
+  if (bluetoothServices.indexOf(",TV,") >= 0 and mctvMirrorMode) {
+    if (r + g + b > mctvThreshBrightness) {MCTV_line(x1, y1, x2, y2, 1);}
+    else {MCTV_line(x1, y1, x2, y2, 0);}
+  }
 }
 
 void drawRect(String LABEL, byte r, byte g, byte b, int x1, int y1, int x2, int y2) {
@@ -1448,6 +1492,12 @@ void drawRect(String LABEL, byte r, byte g, byte b, int x1, int y1, int x2, int 
   screen.drawRect(x1, y1, x2, y2);
 
   delay(10);
+
+
+  if (bluetoothServices.indexOf(",TV,") >= 0 and mctvMirrorMode) {
+    if (r + g + b > mctvThreshBrightness) {MCTV_drawRect(x1, y1, x2, y2, 1);}
+    else {MCTV_drawRect(x1, y1, x2, y2, 0);}
+  }
 }
 
 void drawRoundRect(String LABEL, byte r, byte g, byte b, int x1, int y1, int x2, int y2) {
@@ -1476,6 +1526,12 @@ void drawRoundRect(String LABEL, byte r, byte g, byte b, int x1, int y1, int x2,
   screen.drawRoundRect(x1, y1, x2, y2);
 
   delay(10);
+
+
+  if (bluetoothServices.indexOf(",TV,") >= 0 and mctvMirrorMode) {
+    if (r + g + b > mctvThreshBrightness) {MCTV_drawRect(x1, y1, x2, y2, 1);}
+    else {MCTV_drawRect(x1, y1, x2, y2, 0);}
+  }
 }
 
 void fillRect(String LABEL, byte r, byte g, byte b, int x1, int y1, int x2, int y2) {
@@ -1504,6 +1560,12 @@ void fillRect(String LABEL, byte r, byte g, byte b, int x1, int y1, int x2, int 
   screen.fillRect(x1, y1, x2, y2);
 
   delay(10);
+
+
+  if (bluetoothServices.indexOf(",TV,") >= 0 and mctvMirrorMode) {
+    if (r + g + b > mctvThreshBrightness) {MCTV_fillRect(x1, y1, x2, y2, 1);}
+    else {MCTV_fillRect(x1, y1, x2, y2, 0);}
+  }
 }
 
 void fillRoundRect(String LABEL, byte r, byte g, byte b, int x1, int y1, int x2, int y2) {
@@ -1532,6 +1594,12 @@ void fillRoundRect(String LABEL, byte r, byte g, byte b, int x1, int y1, int x2,
   screen.fillRoundRect(x1, y1, x2, y2);
 
   delay(10);
+
+
+  if (bluetoothServices.indexOf(",TV,") >= 0 and mctvMirrorMode) {
+    if (r + g + b > mctvThreshBrightness) {MCTV_fillRect(x1, y1, x2, y2, 1);}
+    else {MCTV_fillRect(x1, y1, x2, y2, 0);}
+  }
 }
 
 void drawCircle(String LABEL, byte r, byte g, byte b, int x, int y, int radius) {
@@ -1617,6 +1685,11 @@ void print(String LABEL, byte r, byte g, byte b, byte b_r, byte b_g, byte b_b, i
   screen.print(text, x, y, rotation);
 
   delay(10);
+
+
+  if (bluetoothServices.indexOf(",TV,") >= 0 and mctvMirrorMode) {
+    MCTV_print(x, y, 1, text);
+  }
 }
 
 void drawGraph(String label, int startX, int startY, unsigned int endX, unsigned int endY, int numPoints, int startRangeY, int endRangeY, String path){
@@ -2173,16 +2246,6 @@ void initScreen(int orientation) {
 
 // bluetooth MAC ADRESS: 14:3:6050f
 
-bool bluetoothInAT = false;
-bool bluetoothIsMaster = false;
-bool bluetoothScanning = false;
-String BLUETOOTH_MAC_ADDRESS = "";
-String bluetoothServices = "";
-String BTConnectedMAC = "";
-unsigned long BTConnectTime = 0;
-unsigned long BTLastPing = 0;
-unsigned long BTLastPingSent = 0;
-String BTSendBuffer = "";
 
 String format_MAC(String unformatted) {
   String mac = "";
@@ -2354,10 +2417,22 @@ void bluetooth_transmit_packet(String data, String destinationMac = ""){
     bluetooth_stop_scan();
     bluetooth_exit_AT();
     if (BTLastPing > BTConnectTime and millis() - BTLastPing < 30000) {
+      while(Serial1.available()) {Serial1.read();}
       Serial1.print(data);
+
+      // wait for reception confirmation to avoid spamming
+      unsigned int timeoutCounter = 0;
+      while (timeoutCounter < 500 and !Serial1.available()){
+        timeoutCounter += 1;
+        delay(1);
+      }
+      Serial1.read();
+      Serial.print("counter end: ");
+      Serial.println(timeoutCounter);
+
     }
     else if (BTConnectedMAC != "") { // wait for connection to take place before sending
-      BTSendBuffer += data;
+      BTSendBuffer += data + "\r"; // source of memory leak, will replace with file buffer later
     }
   }
 }
@@ -2382,8 +2457,9 @@ void bluetooth_connect(String targetMac){
   delay(1000);
   BTConnectTime = millis();
   BTConnectedMAC = targetMac;
-  bluetooth_transmit_packet("CONNECT\n" + BLUETOOTH_MAC_ADDRESS + "\n", targetMac);
-  bluetooth_transmit_packet("TYPE\n", targetMac);
+  bluetooth_transmit_packet("CONNECT\n" + BLUETOOTH_MAC_ADDRESS + "\n");
+  bluetooth_transmit_packet("TYPE\n");
+  bluetooth_transmit_packet("NAME\n");
   refreshScreen();
   CONTROLLING_APP = prev_control_app;
 }
@@ -2395,21 +2471,60 @@ void bluetooth_connect(String targetMac){
 
 // external bluetooth display control
 
-void MCTV_clear() {
-  if (bluetoothServices.indexOf(",TV,") >= 0){
-    bluetooth_transmit_packet(F("TV.CLEAR\n"));
-  }
+String xCoordToMCTV(unsigned long x) {
+  x *= 200;
+  x /= screen.getDisplayXSize();
+  return String(x);
+}
+String yCoordToMCTV(unsigned long y) {
+  y *= 193;
+  y /= screen.getDisplayYSize();
+  return String(y);
 }
 
 
 // c = 0 -> black
 // c = 1 -> white
 // c = 2 -> invert
+void MCTV_clear(byte c) {
+  if (bluetoothServices.indexOf(",TV,") >= 0){
+    bluetooth_transmit_packet("TV.CLEAR\n" + String(c) + "\n");
+  }
+}
+
+void MCTV_pixel(int x, int y, byte c) {
+  if (bluetoothServices.indexOf(",TV,") >= 0){
+    bluetooth_transmit_packet("TV.PIXEL\n" + xCoordToMCTV(x) + "," + yCoordToMCTV(y) + "," + String(c) + "\n");
+  }
+}
+
+void MCTV_2_coord_instruct(String instruct, int x1, int y1, int x2, int y2, int c) {
+  if (bluetoothServices.indexOf(",TV,") >= 0){
+    bluetooth_transmit_packet("TV." + instruct + "\n" + xCoordToMCTV(x1) + "," + yCoordToMCTV(y1) + "," + xCoordToMCTV(x2) + "," + yCoordToMCTV(y2) + "," + String(c) + "\n");
+  }
+}
 
 void MCTV_line(int x1, int y1, int x2, int y2, byte c) {
   if (bluetoothServices.indexOf(",TV,") >= 0){
-    bluetooth_transmit_packet("TV.LINE\n" + String(x1) + "," + String(y1) + "," + String(x2) + "," + String(y1) + "," + String(y2));
+    MCTV_2_coord_instruct("LINE", x1, y1, x2, y1, c);
   }
+}
+
+void MCTV_drawRect(int x1, int y1, int x2, int y2, byte c) {
+  if (bluetoothServices.indexOf(",TV,") >= 0){
+    MCTV_2_coord_instruct("RECT", x1, y1, x2, y1, c);
+  }
+}
+
+void MCTV_fillRect(int x1, int y1, int x2, int y2, byte c) {
+  if (bluetoothServices.indexOf(",TV,") >= 0){
+    MCTV_2_coord_instruct("FILLRECT", x1, y1, x2, y1, c);
+  }
+}
+
+void MCTV_print(int x, int y, byte fontSize, String text) {
+  text.replace('\n', ' ');
+  bluetooth_transmit_packet("TV.PRINT\n" + xCoordToMCTV(x) + "," + yCoordToMCTV(y) + "," + String(fontSize) + "," + text + "\n");
 }
 
 
@@ -3067,6 +3182,8 @@ void showTopBar() {
   if (bluetoothServices.indexOf(",TV,") >= 0) {
     iconPosition += 20;
     showBIM("top-bar", "S/D/R/MCTV.BIM", screen.getDisplayXSize() - iconPosition, 0, 1, 1, b_color, b_color, b_color, color, color, color);
+    if (mctvMirrorMode) {bluetooth_transmit_packet("TV.MODE\nMirror\n");}
+    else {bluetooth_transmit_packet("TV.MODE\nN/A\n");}
   }
 
   refreshScreen(true);
@@ -3591,9 +3708,9 @@ void SETTINGS_START() {
     print("", 0, 0, 0, 240, 240, 240, 20, 100, 0, "medium", F("Bluetooth Power:"));
     print("", 0, 0, 0, 240, 240, 240, 20, 140, 0, "medium", F("Manage Devices"));
     print("", 0, 0, 0, 240, 240, 240, 20, 180, 0, "medium", F("Pair New Device"));*/
-    SETTINGS_showList("NET", 90, 40);
+    SETTINGS_showList("NET", 90, 80);
 
-    on_off_input("bt-switch", screen.getDisplayXSize() - 70, 110, bluetoothActive);
+    on_off_input("bt-switch", screen.getDisplayXSize() - 70, 140, bluetoothActive);
   }
 
   if (SETTINGS_page == "WiFi") {
@@ -3957,8 +4074,10 @@ void SETTINGS() {
         SETTINGS_START();
       }
 
+      byte pageIndex = SETTINGS_getMenuIndex(90, 80);
 
-      if (touchGetX() > screen.getDisplayXSize() - 75 and touchGetY() > 95 and touchGetX() < screen.getDisplayXSize() - 15 and touchGetY() < 125) { // bluetooth switch
+
+      if (pageIndex == 1 and touchGetX() > screen.getDisplayXSize() - 75) { // bluetooth switch
         deleteFile(String("S/SETTINGS/") + "BLUA.MRT");
         File setFile;
         openFile(setFile, String("S/SETTINGS/") + "BLUA.MRT", FILE_WRITE);
@@ -3974,16 +4093,16 @@ void SETTINGS() {
         }
         closeFile(setFile);
         scr_removeLayer("bt-switch");
-        on_off_input("bt-switch", screen.getDisplayXSize() - 70, 110, bluetoothActive);
+        on_off_input("bt-switch", screen.getDisplayXSize() - 70, 140, bluetoothActive);
       }
 
-      else if (touchGetY() > 130 and touchGetY() < 170){
+      else if (pageIndex == 2){
         SETTINGS_page = "Bluetooth";
         scr_removeLayer("");
         SETTINGS_START();
       }
 
-      else if (touchGetY() > 170 and touchGetY() < 210){
+      else if (pageIndex == 3){
         SETTINGS_page = "Bluetooth-Pair";
         scr_removeLayer("");
         SETTINGS_START();
@@ -4128,7 +4247,6 @@ void SETTINGS() {
               openFile(file, "S/BT/SAVE.MRT", FILE_WRITE);
               file.print(mac + "\tNo Name\n");
               closeFile(file);
-              bluetooth_transmit_packet("NAME\n");
             }
           }
 
@@ -6355,7 +6473,9 @@ void loop() {
 
 
   if (bluetoothActive and BTConnectedMAC != "" and millis() - BTLastPingSent > 8000) {
-    Serial1.print("PING\n");
+    bluetooth_stop_scan();
+    bluetooth_exit_AT();
+    Serial1.print("PING\n"); // do NOT replace with bluetooth_transmit_packet()
     BTLastPingSent = millis();
   }
 
@@ -6399,6 +6519,15 @@ void loop() {
 
 
 
+
+
+
+
+
+
+
+
+
   if (Serial1.available()){
     String BTRecieved = Serial1.readStringUntil('\n');
     Serial.println(BTRecieved);
@@ -6423,7 +6552,17 @@ void loop() {
       BTLastPing = millis();
       Serial1.print(BTSendBuffer);
       Serial.print(BTSendBuffer);
-      clearString(BTSendBuffer);
+      /*clearString(BTSendBuffer);
+
+      byte timeoutCounter = 0;
+      while (timeoutCounter < 100 and !Serial1.available()){
+        timeoutCounter += 1;
+        delay(1);
+      }
+      Serial1.read();
+      Serial.print("counter end: ");
+      Serial.println(timeoutCounter);*/
+
       if (!topBarShowsBluetooth) {showTopBar();}
     }
 
@@ -6457,8 +6596,28 @@ void loop() {
 
 
 
+  if (BTSendBuffer != "" and millis() - BTLastPing < 8000) {
+    unsigned int i = BTSendBuffer.indexOf('\r');
+    String packet = BTSendBuffer.substring(0, i);
+    Serial.print("catch up: ");
+    Serial.println(packet);
+    BTSendBuffer.remove(0, i+1);
+    bluetooth_transmit_packet(packet);
+    if (BTSendBuffer == "") {clearString(BTSendBuffer);}
+  }
+
+
+
+
   if (topBarShowsBluetooth and millis() - BTLastPing >= 10000) { // hide bluetooth icon when disconnected
     showTopBar();
+  }
+
+  if (BTConnectedMAC != "" and millis() - BTLastPing >= 60000) { // bluetooth timeout disconnect
+    clearString(BTConnectedMAC);
+    clearString(bluetoothServices);
+    clearString(BTSendBuffer);
+    BTLastPing = 0;
   }
 
 
