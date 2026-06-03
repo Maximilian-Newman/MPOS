@@ -38,7 +38,7 @@ bool keyboardVisible = false;
 bool darkMode = false;
 bool bluetoothActive = false;
 bool mctvMirrorMode = true;
-unsigned int mctvThreshBrightness = 300;
+unsigned int mctvThreshBrightness = 500;
 
 
 
@@ -289,7 +289,14 @@ unsigned long BTLastPing = 0;
 unsigned long BTLastPingSent = 0;
 String BTSendBuffer = "";
 unsigned long BTLockedUntil = 0;
+
 void bluetooth_transmit_packet(String data, bool ignoreOrder = false);
+void MCTV_pixel(int x, int y, byte c, bool nativeSize = false);
+void MCTV_line(int x1, int y1, int x2, int y2, byte c, bool nativeSize = false);
+void MCTV_drawRect(int x1, int y1, int x2, int y2, byte c, bool nativeSize = false);
+void MCTV_fillRect(int x1, int y1, int x2, int y2, byte c, bool nativeSize = false);
+void MCTV_print(int x, int y, byte fontSize, String text, bool nativeSize = false);
+void MCTV_bim(String path, int x0, int y0, float scaleX, float scaleY, char backC, char frontC, bool nativeSize = false);
 
 
 String CURRENT_APP = "";
@@ -463,6 +470,11 @@ void shut_down() {
 
     bluetooth_stop_scan();
     bluetooth_exit_AT();
+
+    if (BTConnectedMAC != "") {
+      bluetooth_transmit_packet("DISCONNECT", true);
+      delay(500);
+    }
     bluetooth_power_off();
 
     closeAllFiles();
@@ -1210,7 +1222,6 @@ void showBIM(String LABEL, String location, int startX, int startY, int scaleX, 
 
 
   openFile(graphFile, location, FILE_READ);
-  graphFile.seek(0);
   int imageWidth = graphFile.readStringUntil(',').toInt();
   int imageHeight = graphFile.readStringUntil(',').toInt();
 
@@ -1249,6 +1260,13 @@ void showBIM(String LABEL, String location, int startX, int startY, int scaleX, 
   }
   sample_RAM();
   closeFile(graphFile);
+
+  if (invertForMCTV){
+    MCTV_bim(location, startX, startY, scaleX, scaleY, '1', '0', false);
+  }
+  else {
+    MCTV_bim(location, startX, startY, scaleX, scaleY, '0', '1', false);
+  }
 }
 
 
@@ -1428,8 +1446,8 @@ void drawPixel(String LABEL, byte r, byte g, byte b, int x, int y) {
 
 
   if (bluetoothServices.indexOf(",TV,") >= 0 and mctvMirrorMode) {
-    if (r + g + b > mctvThreshBrightness) {MCTV_pixel(x, y, 1);}
-    else {MCTV_pixel(x, y, 0);}
+    if (r + g + b > mctvThreshBrightness) {MCTV_pixel(x, y, 1, false);}
+    else {MCTV_pixel(x, y, 0, false);}
   }
 }
 
@@ -2464,13 +2482,23 @@ void bluetooth_transmit_packet(String data, bool ignoreOrder = false){
     bluetooth_stop_scan();
     bluetooth_exit_AT();
     if (BTLastPing > BTConnectTime and millis() - BTLastPing < 30000 and millis() > BTLockedUntil and ((BTSendBuffer == "" and !fileExists("S/BT/SBUF.MRT")) or ignoreOrder)) {
-      Serial1.print(data);
-      BTLockedUntil = millis() + 600;
+      
+      Serial.print("BT sending packet: ");
+      Serial.println(data);
 
-      if (!ignoreOrder){
-        Serial.print("BT instant send: ");
-        Serial.println(data);
+      unsigned int i=0;
+      byte chunkSize = 30;
+      while (i+chunkSize < data.length()) {
+        for (byte j=0; j<chunkSize; j++) {
+          Serial1.write(data[j]);
+        }
+        data.remove(0, chunkSize);
+        delay(50);
       }
+
+      if (data != "") {Serial1.print(data);}
+
+      BTLockedUntil = millis() + 600;
     }
     else if (fileExists("S/BT/SBUF.MRT") or freeMemory() < 900 or BTConnectedMAC.length() > 600) {
       File file;
@@ -2529,49 +2557,167 @@ String yCoordToMCTV(unsigned long y) {
   return String(y);
 }
 
+float xScaleToMCTV(float x) {
+  x *= 200;
+  x /= screen.getDisplayXSize();
+  return x;
+}
+float yScaleToMCTV(float y) {
+  y *= 193;
+  y /= screen.getDisplayYSize();
+  return y;
+}
+
 
 // c = 0 -> black
 // c = 1 -> white
 // c = 2 -> invert
 void MCTV_clear(byte c) {
   if (bluetoothServices.indexOf(",TV,") >= 0){
+    if (c < '0') {c += '0';}
     bluetooth_transmit_packet("TV.CLEAR\n" + String(c) + "\n");
   }
 }
 
-void MCTV_pixel(int x, int y, byte c) {
+void MCTV_pixel(int x, int y, byte c, bool nativeSize = false) {
   if (bluetoothServices.indexOf(",TV,") >= 0){
-    bluetooth_transmit_packet("TV.PIXEL\n" + xCoordToMCTV(x) + "," + yCoordToMCTV(y) + "," + String(c) + "\n");
+    if (c < '0') {c += '0';}
+    if (nativeSize) {
+      bluetooth_transmit_packet("TV.PIXEL\n" + String(x) + "," + String(y) + "," + String(c) + "\n");
+    }
+    else {
+      bluetooth_transmit_packet("TV.PIXEL\n" + xCoordToMCTV(x) + "," + yCoordToMCTV(y) + "," + String(c) + "\n");
+    }
   }
 }
 
-void MCTV_2_coord_instruct(String instruct, int x1, int y1, int x2, int y2, int c) {
+void MCTV_2_coord_instruct(String instruct, int x1, int y1, int x2, int y2, int c, bool nativeSize = false) {
   if (bluetoothServices.indexOf(",TV,") >= 0){
-    bluetooth_transmit_packet("TV." + instruct + "\n" + xCoordToMCTV(x1) + "," + yCoordToMCTV(y1) + "," + xCoordToMCTV(x2) + "," + yCoordToMCTV(y2) + "," + String(c) + "\n");
+    if (c < '0') {c += '0';}
+    if (nativeSize) {
+      bluetooth_transmit_packet("TV." + instruct + "\n" + String(x1) + "," + String(y1) + "," + String(x2) + "," + String(y2) + "," + String(c) + "\n");
+    }
+    else{
+      bluetooth_transmit_packet("TV." + instruct + "\n" + xCoordToMCTV(x1) + "," + yCoordToMCTV(y1) + "," + xCoordToMCTV(x2) + "," + yCoordToMCTV(y2) + "," + String(c) + "\n");
+    }
   }
 }
 
-void MCTV_line(int x1, int y1, int x2, int y2, byte c) {
+void MCTV_line(int x1, int y1, int x2, int y2, byte c, bool nativeSize = false) {
   if (bluetoothServices.indexOf(",TV,") >= 0){
-    MCTV_2_coord_instruct("LINE", x1, y1, x2, y2, c);
+    if (c < '0') {c += '0';}
+    MCTV_2_coord_instruct("LINE", x1, y1, x2, y2, c, nativeSize);
   }
 }
 
-void MCTV_drawRect(int x1, int y1, int x2, int y2, byte c) {
+void MCTV_drawRect(int x1, int y1, int x2, int y2, byte c, bool nativeSize = false) {
   if (bluetoothServices.indexOf(",TV,") >= 0){
-    MCTV_2_coord_instruct("RECT", x1, y1, x2, y1, c);
+    if (c < '0') {c += '0';}
+    MCTV_2_coord_instruct("RECT", x1, y1, x2, y1, c, nativeSize);
   }
 }
 
-void MCTV_fillRect(int x1, int y1, int x2, int y2, byte c) {
+void MCTV_fillRect(int x1, int y1, int x2, int y2, byte c, bool nativeSize = false) {
   if (bluetoothServices.indexOf(",TV,") >= 0){
-    MCTV_2_coord_instruct("FILLRECT", x1, y1, x2, y1, c);
+    if (c < '0') {c += '0';}
+    MCTV_2_coord_instruct("FILLRECT", x1, y1, x2, y1, c, nativeSize);
   }
 }
 
-void MCTV_print(int x, int y, byte fontSize, String text) {
-  text.replace('\n', ' ');
-  bluetooth_transmit_packet("TV.PRINT\n" + xCoordToMCTV(x) + "," + yCoordToMCTV(y) + "," + String(fontSize) + "," + text + "\n");
+void MCTV_print(int x, int y, byte fontSize, String text, bool nativeSize = false) {
+  if (bluetoothServices.indexOf(",TV,") >= 0){
+    text.replace('\n', ' ');
+    if (nativeSize) {
+      bluetooth_transmit_packet("TV.PRINT\n" + String(x) + "," + String(y) + "," + String(fontSize) + "," + text + "\n");
+    }
+    else {
+      bluetooth_transmit_packet("TV.PRINT\n" + xCoordToMCTV(x) + "," + yCoordToMCTV(y) + "," + String(fontSize) + "," + text + "\n");
+    }
+  }
+}
+
+void MCTV_bim(String path, int x0, int y0, float scaleX, float scaleY, char backC, char frontC, bool nativeSize = false) {
+  // c=3 for transparent
+
+  if (bluetoothServices.indexOf(",TV,") == -1) {return;}
+  if (backC < '0') {backC += '0';}
+  if (frontC < '0') {frontC += '0';}
+
+  byte lastX = 255;
+  byte lastY = 255;
+  File file;
+
+  if (!nativeSize) {
+    x0 = xScaleToMCTV(x0);
+    y0 = yScaleToMCTV(y0);
+    scaleX = xScaleToMCTV(scaleX);
+    scaleY = yScaleToMCTV(scaleY);
+  }
+
+  if (openFile(file, path, FILE_READ)) {
+    int width = file.readStringUntil(',').toInt();
+    int height = file.readStringUntil(',').toInt();
+    byte xSkips = 0;
+    byte ySkips = 0;
+    byte xRepeat = 1;
+    byte yRepeat = 1;
+    if (scaleX < 1) { xSkips = 1/scaleX;}
+    if (scaleY < 1) { ySkips = 1/scaleY;}
+    if (scaleX > 2) {xRepeat = int(scaleX) -1;}
+    if (scaleY > 2) {yRepeat = int(scaleY) -1;}
+    byte tvWidth = width / (xSkips+1);
+    byte tvHeight = height / (ySkips+1);
+    byte maxPacketHeight = 50 / tvWidth;
+    if (maxPacketHeight == 0) {maxPacketHeight = 1;}
+
+    String packet;
+    if (tvHeight < maxPacketHeight) {
+      packet = "TV.BIM\n" + String(x0) + "," + String(y0) + "," + String(tvWidth) + "," + String(tvHeight) + ",";
+    }
+    else {
+      packet = "TV.BIM\n" + String(x0) + "," + String(y0) + "," + String(tvWidth) + "," + String(maxPacketHeight) + ",";
+    }
+    
+    byte y = 0;
+    while (y < tvHeight) {
+      Serial.println("test 1");
+      String row = "";
+
+      byte x = 0;
+      while (x < tvWidth) {
+        for (byte i=0; i<xRepeat; i++) {
+          String c = file.readStringUntil(',');
+          if (c == "1") {row += frontC;}
+          else {row += backC;}
+
+          for (byte s=0; s<xSkips; s++) {file.readStringUntil(',');}
+          x += 1;
+        }
+      }
+
+      for (byte i=0; i<yRepeat; i++) {
+        packet += row;
+        for (byte s=0; s < ySkips * (xSkips+1); s++) {file.readStringUntil(',');}
+        y += 1;
+
+        if (y % maxPacketHeight == 0) {
+          bluetooth_transmit_packet(packet);
+          Serial.println(packet);
+          Serial.println(y);
+          if (tvHeight - y < maxPacketHeight) {
+            packet = "TV.BIM\n" + String(x0) + "," + String(y0 + y) + "," + String(tvWidth) + "," + String(tvHeight - y) + ",";
+          }
+          else {
+            packet = "TV.BIM\n" + String(x0) + "," + String(y0 + y) + "," + String(tvWidth) + "," + String(maxPacketHeight) + ",";
+          }
+        }
+      }
+    }
+
+    bluetooth_transmit_packet(packet);
+    Serial.println(packet);
+    closeFile(file);
+  }
 }
 
 
@@ -6180,27 +6326,6 @@ void setup() {
 
 
 
-  // test fileRemovePart()
-
-  deleteFile("test.txt");
-  File file;
-  openFile(file, "test.txt", FILE_WRITE);
-  file.print("0123456789abcdefghijklmnopqrstuvwxyz");
-  closeFile(file);
-
-  openFile(file, "test.txt", FILE_READ);
-  Serial.println(file.readString());
-  closeFile(file);
-
-  fileRemovePart("test.txt", 2, 5);
-
-  openFile(file, "test.txt", FILE_READ);
-  Serial.println(file.readString());
-  closeFile(file);
-
-  deleteFile("test.txt");
-
-  // end of test
 
 
 
@@ -6597,8 +6722,8 @@ void loop() {
 
   if (Serial1.available()){
     String BTRecieved = Serial1.readStringUntil('\n');
-    Serial.print("Bluetooth recieved: ");
-    Serial.println(BTRecieved);
+    //Serial.print("Bluetooth recieved: ");
+    //Serial.println(BTRecieved);
 
 
     if (BTRecieved.startsWith("+INQ:")) {
@@ -6657,28 +6782,21 @@ void loop() {
 
 
 
-  if (BTSendBuffer != "" and millis() - BTLastPing < 8000 and BTLockedUntil < millis()) {
+  if (BTSendBuffer != "" and millis() - BTLastPing < 8000 and BTLockedUntil < millis()) { // BT send from RAM buffer
     unsigned int i = BTSendBuffer.indexOf('\r');
     String packet = BTSendBuffer.substring(0, i);
-    Serial.print("BT RAM catch up: ");
-    Serial.println(packet);
     BTSendBuffer.remove(0, i+1);
     bluetooth_transmit_packet(packet, true);
     if (BTSendBuffer == "" or i == -1) {clearString(BTSendBuffer);}
   }
 
-  if (fileExists("S/BT/SBUF.MRT") and BTSendBuffer == "") {
+  if (fileExists("S/BT/SBUF.MRT") and BTSendBuffer == "") { // BT refill RAM buffer from file buffer
     File file;
     openFile(file, "S/BT/SBUF.MRT", FILE_READ);
 
     while (file.available() and freeMemory() > 900 and BTSendBuffer.length() < 1000) {
       BTSendBuffer += file.readStringUntil('\r') + "\r";
     }
-    Serial.println("Pulled from file cache:");
-    Serial.println(BTSendBuffer);
-
-    Serial.print("file buffer size: ");
-    Serial.println(file.size());
 
     if (file.available() and file.size() < 5000) {
       closeFile(file);
